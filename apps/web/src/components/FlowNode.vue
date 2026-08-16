@@ -1,0 +1,506 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { Handle, Position, type NodeProps } from '@vue-flow/core';
+import { useI18n } from '../services/i18n';
+import type { NodeType, MediaFile } from '../types';
+
+const props = defineProps<
+  NodeProps<{
+    name: string;
+    nodeType: string;
+    metadata?: NodeType;
+    status?: string;
+    media?: MediaFile;
+    mediaDeleted?: boolean;
+  }>
+>();
+
+const { tNodeName, t, locale } = useI18n();
+const isVi = computed(() => locale.value === 'vi');
+
+const media = computed(() => props.data.media);
+const isImage = computed(() => media.value?.type === 'image');
+const isVideo = computed(() => media.value?.type === 'video');
+
+const isImageGenNode = computed(() => {
+  const nt = props.data.nodeType;
+  return nt === 'm2m.media.generateImage' || nt === 'm2m.media.editImage';
+});
+
+const miniVideoRef = ref<HTMLVideoElement>();
+const fileInputRef = ref<HTMLInputElement>();
+const isDragOver = ref(false);
+
+function playMiniVideo() {
+  miniVideoRef.value?.play().catch(() => {});
+}
+
+function pauseMiniVideo() {
+  miniVideoRef.value?.pause();
+}
+
+function handleAction(event: string, e: Event, extra?: Record<string, unknown>) {
+  e.stopPropagation();
+  window.dispatchEvent(
+    new CustomEvent('flow-node-media-action', {
+      detail: {
+        action: event,
+        nodeId: props.id,
+        media: media.value,
+        ...extra
+      }
+    })
+  );
+}
+
+function triggerUpload(e: Event) {
+  e.stopPropagation();
+  fileInputRef.value?.click();
+}
+
+function onFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (file) {
+    handleAction('upload', e, { file });
+  }
+  input.value = '';
+}
+
+function onDrop(e: DragEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+  isDragOver.value = false;
+  const file = e.dataTransfer?.files?.[0];
+  if (file && file.type.startsWith('image/')) {
+    handleAction('upload', e, { file });
+  }
+}
+
+function onDragOver(e: DragEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+  isDragOver.value = true;
+}
+
+function onDragLeave(e: DragEvent) {
+  e.stopPropagation();
+  isDragOver.value = false;
+}
+</script>
+
+<template>
+  <div class="flow-node" :class="[data.status, { 'has-media': Boolean(media && !data.mediaDeleted) }]">
+    <Handle v-if="(data.metadata?.inputs ?? 1) > 0" type="target" :position="Position.Left" />
+
+    <!-- Main Node Header -->
+    <div class="node-main-row">
+      <div class="node-symbol">
+        {{
+          data.metadata?.category === 'trigger'
+            ? '▶'
+            : data.metadata?.category === 'ai'
+              ? '✦'
+              : data.metadata?.category === 'media'
+                ? isVideo
+                  ? '🎬'
+                  : '🖼'
+                : data.metadata?.category === 'data'
+                  ? '{}'
+                  : '⌁'
+        }}
+      </div>
+      <div class="node-text">
+        <strong>{{ data.name }}</strong>
+        <small>{{ tNodeName(data.nodeType, data.metadata?.displayName || data.nodeType) }}</small>
+      </div>
+      <span v-if="data.status" class="node-state">{{ data.status }}</span>
+    </div>
+
+    <!-- Media Canvas Preview Area (Click to Zoom) -->
+    <div
+      v-if="media && !data.mediaDeleted"
+      class="canvas-media-card"
+      :title="isVi ? 'Bấm để phóng to và xem toàn màn hình' : 'Click to zoom and view full size'"
+      @click="(e) => handleAction('view', e)"
+    >
+      <!-- Media Header Tag -->
+      <div class="media-card-header-badge">
+        <span class="type-tag">{{ isVideo ? '🎬 Video' : '🖼 Image' }}</span>
+        <span v-if="media.width && media.height" class="media-res">{{ media.width }}×{{ media.height }}</span>
+      </div>
+
+      <!-- Image Thumbnail -->
+      <div v-if="isImage" class="media-thumb-wrap">
+        <img :src="media.previewUrl" :alt="media.id" class="node-thumb-img" loading="lazy" />
+        <div class="zoom-hint-pill">🔍 {{ isVi ? 'Bấm để phóng to' : 'Click to Zoom' }}</div>
+
+      </div>
+
+      <!-- Video Thumbnail / Player -->
+      <div
+        v-else-if="isVideo"
+        class="media-thumb-wrap video"
+        @mouseenter="playMiniVideo"
+        @mouseleave="pauseMiniVideo"
+      >
+        <video
+          ref="miniVideoRef"
+          :src="media.previewUrl"
+          preload="metadata"
+          muted
+          playsinline
+          loop
+          class="node-thumb-video"
+        ></video>
+        <div class="video-play-indicator">▶</div>
+        <div class="zoom-hint-pill">🔍 {{ isVi ? 'Bấm để phóng to video' : 'Click to Zoom Video' }}</div>
+        <span v-if="media.durationMs" class="video-duration-pill">{{ (media.durationMs / 1000).toFixed(0) }}s</span>
+
+      </div>
+    </div>
+
+    <!-- Upload / Replace Image for Image-Gen Nodes -->
+    <input
+      ref="fileInputRef"
+      type="file"
+      accept="image/png,image/jpeg,image/webp"
+      style="display: none"
+      @change="onFileSelected"
+    />
+
+    <!-- Upload Drop Zone (no media yet) -->
+    <div
+      v-if="isImageGenNode && !media && !data.mediaDeleted"
+      class="upload-drop-zone"
+      :class="{ 'drag-over': isDragOver }"
+      @click="triggerUpload"
+      @drop="onDrop"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+    >
+      <span class="upload-icon">📤</span>
+      <span class="upload-text">{{ isVi ? 'Kéo thả hoặc bấm để tải ảnh lên' : 'Drag & drop or click to upload image' }}</span>
+      <small class="upload-hint">PNG · JPG · WebP · {{ isVi ? 'tối đa 10MB' : 'max 10MB' }}</small>
+    </div>
+
+    <!-- Replace Image Button (has media already) -->
+    <button
+      v-if="isImageGenNode && media && isImage && !data.mediaDeleted"
+      class="replace-image-btn"
+      :title="isVi ? 'Thay đổi ảnh' : 'Replace image'"
+      @click="triggerUpload"
+    >
+      📤 {{ isVi ? 'Thay đổi ảnh' : 'Replace image' }}
+    </button>
+
+    <!-- Deleted Notice -->
+    <div v-else-if="data.mediaDeleted" class="media-deleted-notice">
+      <small>⚠️ {{ t('media.mediaDeletedNotice') || 'Media deleted' }}</small>
+      <button class="regen-link" @click="(e) => handleAction('regenerate', e)">↻ {{ t('media.regenerate') || 'Regenerate' }}</button>
+    </div>
+
+    <!-- Right Handles -->
+    <template v-if="data.metadata?.outputNames?.length">
+      <Handle
+        v-for="(name, index) in data.metadata.outputNames"
+        :id="name"
+        :key="name"
+        type="source"
+        :position="Position.Right"
+        :title="name"
+        :style="{ top: `${((index + 1) / (data.metadata.outputNames.length + 1)) * 100}%` }"
+      />
+    </template>
+    <Handle v-else-if="(data.metadata?.outputs ?? 1) > 0" type="source" :position="Position.Right" />
+  </div>
+</template>
+
+<style scoped>
+.flow-node {
+  min-width: 180px;
+  background: #171b23;
+  border: 1px solid #3a4251;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 7px 22px #0007;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flow-node.has-media {
+  min-width: 220px;
+  background: #151a24;
+  border-color: #43516c;
+}
+
+.flow-node:hover {
+  border-color: #5d6f94;
+  box-shadow: 0 10px 28px #00000088;
+}
+
+.flow-node.uploading {
+  border-color: #6b8aff;
+  box-shadow: 0 0 0 2px rgba(107, 138, 255, 0.2);
+  animation: upload-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes upload-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(107, 138, 255, 0.15); }
+  50% { box-shadow: 0 0 0 4px rgba(107, 138, 255, 0.3); }
+}
+
+.node-main-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.node-symbol {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: #232a38;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: #e2e8f0;
+}
+
+.node-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.node-text strong {
+  display: block;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #f1f5f9;
+}
+
+.node-text small {
+  display: block;
+  color: #8b95a8;
+  font-size: 10px;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-state {
+  font-size: 9px;
+  font-family: 'Space Mono', monospace;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #2b3548;
+  color: #93c5fd;
+}
+
+.canvas-media-card {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0b0e14;
+  border: 1px solid #2d384e;
+  margin-top: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.canvas-media-card:hover {
+  border-color: var(--lime, #3bf49c);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.media-card-header-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: #111622;
+  border-bottom: 1px solid #232c3d;
+  font-size: 10px;
+  font-family: 'Space Mono', monospace;
+}
+
+.type-tag {
+  color: var(--lime, #3bf49c);
+  font-weight: 600;
+}
+
+.media-res {
+  color: #717d96;
+}
+
+.media-thumb-wrap {
+  position: relative;
+  width: 100%;
+  height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #080a0f;
+  overflow: hidden;
+}
+
+.node-thumb-img,
+.node-thumb-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.25s ease;
+}
+
+.media-thumb-wrap:hover .node-thumb-img,
+.media-thumb-wrap:hover .node-thumb-video {
+  transform: scale(1.04);
+}
+
+.zoom-hint-pill {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  color: #f1f5f9;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  pointer-events: none;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+}
+
+
+
+.video-play-indicator {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #000000bb;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  border: 1px solid #ffffff44;
+  pointer-events: none;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.media-thumb-wrap.video:hover .video-play-indicator {
+  transform: scale(1.1);
+  background: rgba(59, 244, 156, 0.3);
+}
+
+.video-duration-pill {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  background: #000000cc;
+  color: var(--lime, #3bf49c);
+  font-family: 'Space Mono', monospace;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+
+
+
+.media-deleted-notice {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #23181d;
+  border: 1px dashed #642935;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.regen-link {
+  border: 0;
+  background: transparent;
+  color: var(--lime, #3bf49c);
+  font-size: 10px;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.upload-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 14px 10px;
+  border: 1.5px dashed #3a4a66;
+  border-radius: 8px;
+  background: #111825;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.upload-drop-zone:hover {
+  border-color: var(--lime, #3bf49c);
+  background: #141e2e;
+}
+
+.upload-drop-zone.drag-over {
+  border-color: var(--lime, #3bf49c);
+  background: #162218;
+  box-shadow: inset 0 0 12px rgba(59, 244, 156, 0.08);
+}
+
+.upload-icon {
+  font-size: 18px;
+}
+
+.upload-text {
+  font-size: 10px;
+  color: #a0aec0;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.upload-drop-zone:hover .upload-text {
+  color: #e2e8f0;
+}
+
+.upload-hint {
+  font-size: 8px;
+  color: #5a6478;
+  font-family: 'Space Mono', monospace;
+}
+
+.replace-image-btn {
+  display: block;
+  width: 100%;
+  padding: 5px 0;
+  border: 1px solid #2d3a50;
+  border-radius: 6px;
+  background: #151c2a;
+  color: #93acd0;
+  font-size: 10px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.replace-image-btn:hover {
+  border-color: var(--lime, #3bf49c);
+  color: #e2e8f0;
+  background: #1a2536;
+}
+</style>

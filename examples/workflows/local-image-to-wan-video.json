@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "name": "Local Image to Wan2.2 Video Animation",
+  "description": "Animate an existing image or generated photo into a 5-second cinematic video with Wan2.2 TI2V-5B",
+  "definition": {
+    "nodes": [
+      {
+        "id": "manual-start",
+        "type": "trigger.manual",
+        "name": "Start",
+        "position": { "x": 100, "y": 200 },
+        "parameters": {}
+      },
+      {
+        "id": "wan-video-node",
+        "type": "m2m.media.imageToVideo",
+        "name": "Wan2.2 TI2V-5B",
+        "position": { "x": 380, "y": 200 },
+        "parameters": {
+          "provider": "comfyui",
+          "model": "wan2.2-ti2v-5b",
+          "sourceImage": "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=1024",
+          "prompt": "Gentle cascading waterfall flowing, river water ripples, morning sunbeams through pine trees",
+          "durationSeconds": 5,
+          "fps": 24,
+          "motionStrength": 0.8
+        }
+      },
+      {
+        "id": "save-video-node",
+        "type": "m2m.media.saveMedia",
+        "name": "Save Video",
+        "position": { "x": 680, "y": 200 },
+        "parameters": {
+          "destination": "local-disk",
+          "filenamePattern": "waterfall_nature_{{timestamp}}"
+        }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "manual-start", "target": "wan-video-node" },
+      { "id": "e2", "source": "wan-video-node", "target": "save-video-node" }
+    ],
+    "settings": {
+      "timeoutMs": 600000,
+      "saveExecutionProgress": true
+    }
+  }
+}

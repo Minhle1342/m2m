@@ -1,0 +1,14 @@
+{
+  "name": "@m2m/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": { "typecheck": "tsc -p tsconfig.json" },
+  "dependencies": {
+    "@m2m/ai-core": "workspace:*",
+    "@m2m/node-sdk": "workspace:*",
+    "@m2m/nodes-ai": "workspace:*",
+    "@m2m/nodes-base": "workspace:*"
+  }
+}

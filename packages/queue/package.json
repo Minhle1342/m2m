@@ -1,0 +1,13 @@
+{
+  "name": "@m2m/queue",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": { "typecheck": "tsc -p tsconfig.json" },
+  "dependencies": {
+    "@m2m/shared": "workspace:*",
+    "bull": "^4.16.5",
+    "ioredis": "latest"
+  }
+}

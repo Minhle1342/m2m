@@ -1,0 +1,15 @@
+{
+  "name": "@m2m/ai-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": { "typecheck": "tsc -p tsconfig.json" },
+  "dependencies": {
+    "@ai-sdk/google": "latest",
+    "@ai-sdk/openai-compatible": "latest",
+    "@huggingface/inference": "^4.13.26",
+    "@m2m/shared": "workspace:*",
+    "ai": "latest"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@m2m/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite", "build": "vue-tsc -b && vite build", "typecheck": "vue-tsc -b" },
+  "dependencies": {
+    "@vue-flow/background": "latest",
+    "@vue-flow/controls": "latest",
+    "@vue-flow/core": "latest",
+    "@vue-flow/minimap": "latest",
+    "pinia": "latest",
+    "vue": "latest",
+    "vue-router": "latest"
+  },
+  "devDependencies": { "@vitejs/plugin-vue": "latest", "vite": "latest", "vue-tsc": "latest" }
+}

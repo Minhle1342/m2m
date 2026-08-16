@@ -1,0 +1,39 @@
+{
+  "name": "m2m-max-to-minus",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,worker,web -c blue,magenta,green \"pnpm dev:api\" \"pnpm dev:worker\" \"pnpm dev:web\"",
+    "dev:api": "pnpm --filter @m2m/api dev",
+    "dev:worker": "pnpm --filter @m2m/worker dev",
+    "dev:web": "pnpm --filter @m2m/web dev",
+    "db:migrate": "pnpm --filter @m2m/database db:migrate",
+    "db:seed": "pnpm --filter @m2m/database db:seed",
+    "db:backup": "pnpm --filter @m2m/database db:backup",
+    "build": "pnpm typecheck && pnpm --filter @m2m/web build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "vitest run",
+    "test:smoke": "tsx scripts/local-smoke.ts",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "check": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "@types/node": "^24.10.0",
+    "concurrently": "latest",
+    "eslint": "latest",
+    "eslint-config-prettier": "latest",
+    "prettier": "latest",
+    "tsx": "latest",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "latest",
+    "vitest": "latest"
+  }
+}

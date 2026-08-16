@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "name": "Local FLUX.2 to Wan2.2 Video Pipeline",
+  "description": "Generate image using FLUX.2 Klein 4B via local ComfyUI, then animate into a cinematic video with Wan2.2 TI2V-5B",
+  "definition": {
+    "nodes": [
+      {
+        "id": "manual-1",
+        "type": "trigger.manual",
+        "name": "Start Pipeline",
+        "position": { "x": 60, "y": 180 },
+        "parameters": {}
+      },
+      {
+        "id": "prompt-opt-1",
+        "type": "m2m.ai.mediaPromptBuilder",
+        "name": "Prompt & Camera Builder",
+        "position": { "x": 320, "y": 180 },
+        "parameters": {
+          "sceneDescription": "A cyberpunk street in the rain with neon reflections and flying vehicles",
+          "style": "cinematic cyberpunk, photorealistic, 8k, octane render",
+          "targetModel": "flux"
+        }
+      },
+      {
+        "id": "flux-img-1",
+        "type": "m2m.media.generateImage",
+        "name": "FLUX.2 Klein 4B",
+        "position": { "x": 600, "y": 180 },
+        "parameters": {
+          "provider": "comfyui",
+          "model": "flux2-klein-4b",
+          "prompt": "{{$json.optimizedPrompt}}",
+          "width": 1024,
+          "height": 1024,
+          "steps": 25,
+          "guidance": 3.5
+        }
+      },
+      {
+        "id": "wan-video-1",
+        "type": "m2m.media.imageToVideo",
+        "name": "Wan2.2 TI2V-5B",
+        "position": { "x": 880, "y": 180 },
+        "parameters": {
+          "provider": "comfyui",
+          "model": "wan2.2-ti2v-5b",
+          "sourceImage": "{{$json.media.previewUrl}}",
+          "prompt": "Gentle rain falling, subtle camera dolly forward with ambient neon glow",
+          "durationSeconds": 5,
+          "fps": 24,
+          "motionStrength": 0.75
+        }
+      },
+      {
+        "id": "save-1",
+        "type": "m2m.media.saveMedia",
+        "name": "Save Video Output",
+        "position": { "x": 1160, "y": 180 },
+        "parameters": {
+          "destination": "local-disk",
+          "filenamePattern": "cyberpunk_scene_{{timestamp}}"
+        }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "manual-1", "target": "prompt-opt-1" },
+      { "id": "e2", "source": "prompt-opt-1", "target": "flux-img-1" },
+      { "id": "e3", "source": "flux-img-1", "target": "wan-video-1" },
+      { "id": "e4", "source": "wan-video-1", "target": "save-1" }
+    ],
+    "settings": {
+      "timeoutMs": 600000,
+      "saveExecutionProgress": true
+    }
+  }
+}

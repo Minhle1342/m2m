@@ -1,0 +1,33 @@
+{
+  "name": "@m2m/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --tsconfig ../../tsconfig.base.json src/main.ts",
+    "start": "tsx --tsconfig ../../tsconfig.base.json src/main.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@m2m/config": "workspace:*",
+    "@m2m/database": "workspace:*",
+    "@m2m/node-sdk": "workspace:*",
+    "@m2m/queue": "workspace:*",
+    "@m2m/shared": "workspace:*",
+    "@m2m/workflow-core": "workspace:*",
+    "@types/multer": "^2.2.0",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "^5.1.0",
+    "express-rate-limit": "latest",
+    "helmet": "latest",
+    "ioredis": "latest",
+    "multer": "^2.2.0",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/cors": "latest",
+    "@types/express": "latest",
+    "tsx": "latest"
+  }
+}

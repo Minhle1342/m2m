@@ -1,0 +1,18 @@
+{
+  "name": "@m2m/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "tsx watch --tsconfig ../../tsconfig.base.json src/main.ts", "start": "tsx --tsconfig ../../tsconfig.base.json src/main.ts", "typecheck": "tsc -p tsconfig.json" },
+  "dependencies": {
+    "@m2m/config": "workspace:*",
+    "@m2m/database": "workspace:*",
+    "@m2m/queue": "workspace:*",
+    "@m2m/shared": "workspace:*",
+    "@m2m/workflow-core": "workspace:*",
+    "bull": "^4.16.5",
+    "dotenv": "latest",
+    "ioredis": "latest"
+  },
+  "devDependencies": { "tsx": "latest" }
+}

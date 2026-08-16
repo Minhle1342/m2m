@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "name": "Local FLUX.2 Klein 4B Image Generator",
+  "description": "Generate high resolution images with prompt conditioning locally using ComfyUI",
+  "definition": {
+    "nodes": [
+      {
+        "id": "manual-trigger",
+        "type": "trigger.manual",
+        "name": "Start",
+        "position": { "x": 100, "y": 200 },
+        "parameters": {}
+      },
+      {
+        "id": "gen-image-node",
+        "type": "m2m.media.generateImage",
+        "name": "FLUX.2 Klein 4B",
+        "position": { "x": 380, "y": 200 },
+        "parameters": {
+          "provider": "comfyui",
+          "model": "flux2-klein-4b",
+          "prompt": "Hyperrealistic macro photograph of an iridescent dragonfly on a wet lotus flower, golden hour lighting, 8k, sharp focus",
+          "width": 1024,
+          "height": 1024,
+          "steps": 25,
+          "guidance": 3.5
+        }
+      },
+      {
+        "id": "save-media-node",
+        "type": "m2m.media.saveMedia",
+        "name": "Save Image",
+        "position": { "x": 680, "y": 200 },
+        "parameters": {
+          "destination": "local-disk",
+          "filenamePattern": "dragonfly_lotus_{{timestamp}}"
+        }
+      }
+    ],
+    "edges": [
+      { "id": "edge-1", "source": "manual-trigger", "target": "gen-image-node" },
+      { "id": "edge-2", "source": "gen-image-node", "target": "save-media-node" }
+    ],
+    "settings": {
+      "timeoutMs": 300000,
+      "saveExecutionProgress": true
+    }
+  }
+}

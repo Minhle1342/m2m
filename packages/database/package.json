@@ -1,0 +1,21 @@
+{
+  "name": "@m2m/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "db:migrate": "tsx src/migrate.ts",
+    "db:seed": "tsx src/seed.ts",
+    "db:backup": "tsx src/backup.ts"
+  },
+  "dependencies": {
+    "@m2m/shared": "workspace:*",
+    "better-sqlite3": "latest",
+    "dotenv": "latest",
+    "reflect-metadata": "latest",
+    "typeorm": "latest"
+  },
+  "devDependencies": { "tsx": "latest" }
+}
