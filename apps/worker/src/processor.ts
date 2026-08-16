@@ -181,17 +181,40 @@ export function createWorkflowProcessor(db: M2MDataSource, events: ExecutionEven
             };
           },
           resolveCredentials: async (node) => {
-            const resolved: Record<string, { type: string; data: Record<string, string> }> = {};
+            const resolved: Record<string, { id?: string; name?: string; type: string; data: Record<string, string> }> = {};
             for (const [alias, id] of Object.entries(node.credentials ?? {})) {
+              if (!id) continue;
               const credential = await db
                 .getRepository(CredentialEntity)
                 .createQueryBuilder('c')
                 .addSelect('c.encryptedData')
                 .where('c.id = :id AND c.workspaceId = :workspaceId', { id, workspaceId: execution.workspaceId })
                 .getOne();
-              if (!credential) throw new M2MError('CREDENTIAL_ERROR', `Credential not found for ${alias}`);
-              resolved[alias] = { type: credential.type, data: decryptCredential(credential.encryptedData) };
+              if (credential) {
+                resolved[alias] = { id: credential.id, name: credential.name, type: credential.type, data: decryptCredential(credential.encryptedData) };
+              }
             }
+
+            const providerType = node.parameters?.provider ? String(node.parameters.provider) : undefined;
+            const hasMatchingType = providerType && Object.values(resolved).some((c) => c.type === providerType);
+            if (providerType && !hasMatchingType) {
+              const fallbackCred = await db
+                .getRepository(CredentialEntity)
+                .createQueryBuilder('c')
+                .addSelect('c.encryptedData')
+                .where('c.workspaceId = :workspaceId AND c.type = :type', { workspaceId: execution.workspaceId, type: providerType })
+                .orderBy('c.updatedAt', 'DESC')
+                .getOne();
+              if (fallbackCred) {
+                resolved[`auto_${providerType}`] = {
+                  id: fallbackCred.id,
+                  name: fallbackCred.name,
+                  type: fallbackCred.type,
+                  data: decryptCredential(fallbackCred.encryptedData)
+                };
+              }
+            }
+
             return resolved;
           }
         }

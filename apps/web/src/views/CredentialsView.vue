@@ -21,6 +21,73 @@ const DEFAULT_CREDENTIAL_TYPES: CredentialTypeDefinition[] = [
     testConnection: true
   },
   {
+    type: 'siliconflow',
+    displayName: 'SiliconCloud (SiliconFlow)',
+    category: 'image',
+    costBadge: 'FREE CREDIT',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Fast cloud inference with free starter credits for Kolors, Wan 2.1, and CogVideoX.',
+    documentationUrl: 'https://docs.siliconflow.com/en/userguide/introduction',
+    fields: [
+      { name: 'apiKey', label: 'API Key (sk-...)', type: 'password', required: true },
+      { name: 'baseUrl', label: 'Base URL (Optional)', type: 'string', required: false, default: 'https://api.siliconflow.com/v1' }
+    ],
+    testConnection: true
+  },
+  {
+    type: 'zhipu',
+    displayName: 'Zhipu AI (BigModel / CogVideoX)',
+    category: 'image',
+    costBadge: 'FREE CREDIT',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Zhipu AI cloud API with free starter tokens for CogView-3/4 and CogVideoX generation.',
+    documentationUrl: 'https://open.bigmodel.cn/dev/api',
+    fields: [
+      { name: 'apiKey', label: 'API Key', type: 'password', required: true },
+      { name: 'baseUrl', label: 'Base URL (Optional)', type: 'string', required: false, default: 'https://open.bigmodel.cn/api/paas/v4' }
+    ],
+    testConnection: true
+  },
+  {
+    type: 'dashscope',
+    displayName: 'Alibaba Cloud (DashScope / Wanx)',
+    category: 'image',
+    costBadge: 'FREE CREDIT',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Alibaba Tongyi Wanxiang 90-day free trial quota for Wanx 2.1 image & video generation.',
+    documentationUrl: 'https://help.aliyun.com/zh/dashscope/',
+    fields: [
+      { name: 'apiKey', label: 'DashScope API Key (sk-...)', type: 'password', required: true },
+      { name: 'baseUrl', label: 'Base URL (Optional)', type: 'string', required: false, default: 'https://dashscope.aliyuncs.com/api/v1' }
+    ],
+    testConnection: true
+  },
+  {
+    type: 'cloudflare',
+    displayName: 'Cloudflare Workers AI (10k Neurons/Day Free)',
+    category: 'image',
+    costBadge: 'FREE CREDIT',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: '10,000 free Neurons every day for FLUX.1-schnell and SDXL Lightning.',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/',
+    fields: [
+      { name: 'accountId', label: 'Cloudflare Account ID', type: 'string', required: true },
+      { name: 'apiKey', label: 'API Token (Workers AI Read/Edit)', type: 'password', required: true }
+    ],
+    testConnection: true
+  },
+  {
+    type: 'pollinations',
+    displayName: 'Pollinations.ai (100% Free & Unlimited)',
+    category: 'image',
+    costBadge: 'FREE CREDIT',
+    badges: ['FREE CREDIT'],
+    description: 'Instant free unlimited FLUX and Turbo image generation without API key.',
+    documentationUrl: 'https://pollinations.ai/',
+    fields: [],
+    testConnection: true
+  },
+  {
     type: 'huggingface',
     displayName: 'Hugging Face',
     category: 'image',

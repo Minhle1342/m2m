@@ -253,11 +253,45 @@ function getPropertyOptions(property: { name: string; options?: Array<{ label: s
     if (provider === 'comfyui') {
       return property.options?.filter((o) => ['flux2-klein-4b', 'sdxl'].includes(String(o.value))) || property.options;
     }
+    if (provider === 'siliconflow') {
+      return property.options?.filter((o) => ['siliconflow-kolors', 'siliconflow-sd3.5', 'siliconflow-sdxl'].includes(String(o.value))) || property.options;
+    }
+    if (provider === 'zhipu') {
+      return property.options?.filter((o) => ['zhipu-cogview-3-plus', 'zhipu-cogview-4'].includes(String(o.value))) || property.options;
+    }
+    if (provider === 'dashscope') {
+      return property.options?.filter((o) => ['dashscope-wanx2.1-turbo'].includes(String(o.value))) || property.options;
+    }
+    if (provider === 'cloudflare') {
+      return property.options?.filter((o) => ['cf-flux-schnell', 'cf-sdxl-lightning'].includes(String(o.value))) || property.options;
+    }
+    if (provider === 'pollinations') {
+      return property.options?.filter((o) => ['pollinations-flux'].includes(String(o.value))) || property.options;
+    }
     if (provider === 'huggingface') {
       return property.options?.filter((o) => ['hf-flux-schnell'].includes(String(o.value))) || property.options;
     }
     if (provider === 'black-forest-labs') {
       return property.options?.filter((o) => ['bfl-flux-pro-1.1', 'bfl-flux-dev'].includes(String(o.value))) || property.options;
+    }
+  }
+
+  if (property.name === 'model' && selected.value?.data.nodeType === 'm2m.media.imageToVideo') {
+    const provider = String(selected.value.data.parameters?.provider || 'comfyui');
+    if (provider === 'comfyui') {
+      return property.options?.filter((o) => ['wan2.2-ti2v-5b', 'wan2.1-i2v', 'cogvideox-i2v', 'ltx-video', 'hunyuan-video-i2v'].includes(String(o.value))) || property.options;
+    }
+    if (provider === 'siliconflow') {
+      return property.options?.filter((o) => ['siliconflow-wan2.1-i2v', 'siliconflow-cogvideox'].includes(String(o.value))) || property.options;
+    }
+    if (provider === 'zhipu') {
+      return property.options?.filter((o) => ['zhipu-cogvideox-flash'].includes(String(o.value))) || property.options;
+    }
+    if (provider === 'dashscope') {
+      return property.options?.filter((o) => ['dashscope-wanx2.1-i2v'].includes(String(o.value))) || property.options;
+    }
+    if (provider === 'huggingface') {
+      return property.options?.filter((o) => ['hf-ltx-video-i2v'].includes(String(o.value))) || property.options;
     }
   }
   return property.options;
@@ -590,10 +624,32 @@ function setParameter(name: string, value: unknown) {
     if (nodeType === 'm2m.media.generateImage') {
       if (value === 'comfyui') {
         selected.value.data.parameters.model = 'flux2-klein-4b';
+      } else if (value === 'siliconflow') {
+        selected.value.data.parameters.model = 'siliconflow-kolors';
+      } else if (value === 'zhipu') {
+        selected.value.data.parameters.model = 'zhipu-cogview-3-plus';
+      } else if (value === 'dashscope') {
+        selected.value.data.parameters.model = 'dashscope-wanx2.1-turbo';
+      } else if (value === 'cloudflare') {
+        selected.value.data.parameters.model = 'cf-flux-schnell';
+      } else if (value === 'pollinations') {
+        selected.value.data.parameters.model = 'pollinations-flux';
       } else if (value === 'huggingface') {
         selected.value.data.parameters.model = 'hf-flux-schnell';
       } else if (value === 'black-forest-labs') {
         selected.value.data.parameters.model = 'bfl-flux-pro-1.1';
+      }
+    } else if (nodeType === 'm2m.media.imageToVideo') {
+      if (value === 'comfyui') {
+        selected.value.data.parameters.model = 'wan2.2-ti2v-5b';
+      } else if (value === 'siliconflow') {
+        selected.value.data.parameters.model = 'siliconflow-wan2.1-i2v';
+      } else if (value === 'zhipu') {
+        selected.value.data.parameters.model = 'zhipu-cogvideox-flash';
+      } else if (value === 'dashscope') {
+        selected.value.data.parameters.model = 'dashscope-wanx2.1-i2v';
+      } else if (value === 'huggingface') {
+        selected.value.data.parameters.model = 'hf-ltx-video-i2v';
       }
     } else if (selectedMeta.value?.category === 'ai') {
       if (value === 'ollama') {

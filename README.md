@@ -126,6 +126,12 @@ Operational endpoints include queue counts at `/api/v1/admin/queues`, audit hist
 - **Invalid workflow**: use **Validate**; node/field-level errors are returned instead of a generic 500.
 - **Node failed**: open its execution detail to inspect the sanitized error and retry attempt.
 
+## Documentation
+
+- 📘 [Developer Onboarding Guide (Hướng dẫn lập trình viên mới)](docs/developer-onboarding-guide.md) — Toàn bộ kiến trúc, vòng đời thực thi DAG, hướng dẫn viết custom node, AI media providers.
+- 📖 [User Guide (Sổ tay hướng dẫn người dùng)](docs/user-guide.md) — Hướng dẫn sử dụng Canvas, Inpainting Editor, Media generation.
+- 🎨 [Media Local Setup (Cài đặt ComfyUI & Local Models)](docs/media-local-setup.md) — Hướng dẫn cài đặt FLUX.2 Klein 4B & Wan2.2 TI2V-5B cục bộ.
+
 ## Security defaults
 
 Credentials use AES-256-GCM encryption and API responses never include ciphertext or old secret values. Logs omit request bodies, authorization headers, and credentials. Expressions expose only explicit read-only roots. HTTP nodes enforce protocol, timeout, response-size and retry policy; production mode also blocks obvious private-network destinations. There is no shell-execution node.

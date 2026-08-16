@@ -244,4 +244,48 @@ describe('media regressions', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it('clamps excessive step counts (e.g. 30) for fal.ai LTX video to prevent API validation rejection', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'm2m-hf-steps-'));
+    try {
+      const inputPath = join(directory, 'input.png');
+      writeFileSync(inputPath, Buffer.from([137, 80, 78, 71]));
+      const imageToVideo = vi.fn().mockResolvedValue(
+        new Blob([new Uint8Array([0, 0, 0, 24])], { type: 'video/mp4' })
+      );
+      const provider = new HuggingFaceMediaProvider(
+        new LocalMediaStorage(directory),
+        () => ({ imageToVideo, textToImage: vi.fn() } as any)
+      );
+
+      await provider.generateVideo(
+        {
+          model: 'hf-ltx-video-i2v',
+          prompt: 'cinematic drone view',
+          inputImage: {
+            id: 'media_ima_1',
+            type: 'image',
+            mimeType: 'image/png',
+            filename: 'input.png',
+            localPath: inputPath
+          },
+          durationSeconds: 3,
+          fps: 24,
+          steps: 30 // typical diffusion default that exceeds fal.ai's max 12 limit
+        },
+        { type: 'huggingface', data: { apiKey: 'hf_test' } }
+      );
+
+      expect(imageToVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parameters: expect.objectContaining({
+            first_pass_num_inference_steps: 8
+          })
+        }),
+        expect.anything()
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

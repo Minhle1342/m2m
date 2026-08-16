@@ -9,6 +9,42 @@ echo              m2m Fullstack Development
 echo =======================================================
 echo.
 
+REM 0. Ensure Docker Desktop is running
+echo [0/3] Checking Docker Desktop status...
+docker info >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo [INFO] Docker daemon is not active. Attempting to start Docker Desktop...
+    set "DOCKER_EXE=%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
+    if not exist "%DOCKER_EXE%" (
+        set "DOCKER_EXE=%LOCALAPPDATA%\Programs\Docker\Docker\Docker Desktop.exe"
+    )
+    if exist "%DOCKER_EXE%" (
+        start "" "%DOCKER_EXE%"
+        echo Waiting for Docker daemon to initialize (this may take 15-30 seconds)...
+        set /a DOCKER_WAIT_COUNT=0
+        :WAIT_DOCKER
+        timeout /t 2 /nobreak >nul
+        docker info >nul 2>&1
+        if %ERRORLEVEL% EQU 0 (
+            echo [OK] Docker Desktop engine is ready.
+            goto DOCKER_READY
+        )
+        set /a DOCKER_WAIT_COUNT+=1
+        if %DOCKER_WAIT_COUNT% GEQ 30 (
+            echo [WARNING] Docker Desktop did not respond within 60s. Proceeding anyway...
+            goto DOCKER_READY
+        )
+        goto WAIT_DOCKER
+    ) else (
+        echo [WARNING] Could not locate Docker Desktop executable automatically.
+        echo Please ensure Docker Desktop is started manually.
+    )
+) else (
+    echo [OK] Docker Desktop engine is already active.
+)
+:DOCKER_READY
+echo.
+
 REM 1. Start Redis container via Docker Compose (Port 6379)
 echo [1/3] Starting Redis container on port 6379...
 docker compose up -d redis >nul 2>&1

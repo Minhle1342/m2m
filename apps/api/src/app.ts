@@ -71,6 +71,73 @@ const CREDENTIAL_TYPE_DEFINITIONS = [
     testConnection: true
   },
   {
+    type: 'siliconflow',
+    displayName: 'SiliconCloud (SiliconFlow)',
+    category: 'cloud',
+    costBadge: 'FREE CREDIT',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Fast cloud inference with free starter credits for Kolors, Wan 2.1, and CogVideoX.',
+    documentationUrl: 'https://docs.siliconflow.com/en/userguide/introduction',
+    fields: [
+      { name: 'apiKey', label: 'API Key (sk-...)', type: 'password', required: true },
+      { name: 'baseUrl', label: 'Base URL', type: 'string', required: false, default: 'https://api.siliconflow.com/v1' }
+    ],
+    testConnection: true
+  },
+  {
+    type: 'zhipu',
+    displayName: 'Zhipu AI (BigModel / CogVideoX)',
+    category: 'cloud',
+    costBadge: 'FREE CREDIT',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Zhipu AI cloud API with free starter tokens for CogView-3/4 and CogVideoX generation.',
+    documentationUrl: 'https://open.bigmodel.cn/dev/api',
+    fields: [
+      { name: 'apiKey', label: 'API Key', type: 'password', required: true },
+      { name: 'baseUrl', label: 'Base URL', type: 'string', required: false, default: 'https://open.bigmodel.cn/api/paas/v4' }
+    ],
+    testConnection: true
+  },
+  {
+    type: 'dashscope',
+    displayName: 'Alibaba Cloud (DashScope / Wanx)',
+    category: 'cloud',
+    costBadge: 'FREE CREDIT',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Alibaba Tongyi Wanxiang 90-day free trial quota for Wanx 2.1 image & video generation.',
+    documentationUrl: 'https://help.aliyun.com/zh/dashscope/',
+    fields: [
+      { name: 'apiKey', label: 'DashScope API Key (sk-...)', type: 'password', required: true },
+      { name: 'baseUrl', label: 'Base URL', type: 'string', required: false, default: 'https://dashscope.aliyuncs.com/api/v1' }
+    ],
+    testConnection: true
+  },
+  {
+    type: 'cloudflare',
+    displayName: 'Cloudflare Workers AI (10k Neurons/Day Free)',
+    category: 'cloud',
+    costBadge: 'FREE CREDIT',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: '10,000 free Neurons every day for FLUX.1-schnell and SDXL Lightning.',
+    documentationUrl: 'https://developers.cloudflare.com/workers-ai/',
+    fields: [
+      { name: 'accountId', label: 'Cloudflare Account ID', type: 'string', required: true },
+      { name: 'apiKey', label: 'API Token (Workers AI Read/Edit)', type: 'password', required: true }
+    ],
+    testConnection: true
+  },
+  {
+    type: 'pollinations',
+    displayName: 'Pollinations.ai (100% Free & Unlimited)',
+    category: 'cloud',
+    costBadge: 'FREE CREDIT',
+    badges: ['FREE CREDIT'],
+    description: 'Instant free unlimited FLUX and Turbo image generation without API key.',
+    documentationUrl: 'https://pollinations.ai/',
+    fields: [],
+    testConnection: true
+  },
+  {
     type: 'ollama',
     displayName: 'Ollama (Local LLM)',
     category: 'llm',
@@ -192,7 +259,7 @@ export function createApp(db: M2MDataSource, queue: BullQueueAdapter, events: Ex
     }
     const geminiCredential = decryptedCredentials.find(({ entity }) => entity.type === 'gemini');
 
-    const mediaProviders = ['comfyui', 'huggingface', 'black-forest-labs'];
+    const mediaProviders = ['comfyui', 'huggingface', 'black-forest-labs', 'siliconflow', 'zhipu', 'dashscope', 'cloudflare', 'pollinations'];
     const providerStatuses = await Promise.all(mediaProviders.map(async (providerId) => {
       const storedCredential = credentialEntities.find((entity) => entity.type === providerId);
       const credential = decryptedCredentials.find(({ entity }) => entity.type === providerId);
@@ -659,6 +726,45 @@ export function createApp(db: M2MDataSource, queue: BullQueueAdapter, events: Ex
         reachable = false;
         message = 'Failed to reach Black Forest Labs API';
       }
+    } else if (credential.type === 'siliconflow') {
+      try {
+        const sfProvider = mediaRouter.get('siliconflow');
+        reachable = await sfProvider.health({ type: credential.type, data: decryptedData });
+        message = reachable ? 'SiliconCloud API key is verified and active' : 'Invalid or unauthorized SiliconCloud API key';
+      } catch {
+        reachable = false;
+        message = 'Failed to reach SiliconCloud API';
+      }
+    } else if (credential.type === 'zhipu') {
+      try {
+        const zhipuProvider = mediaRouter.get('zhipu');
+        reachable = await zhipuProvider.health({ type: credential.type, data: decryptedData });
+        message = reachable ? 'Zhipu AI BigModel API key is verified' : 'Invalid or expired Zhipu AI API key';
+      } catch {
+        reachable = false;
+        message = 'Failed to reach Zhipu AI API';
+      }
+    } else if (credential.type === 'dashscope') {
+      try {
+        const dsProvider = mediaRouter.get('dashscope');
+        reachable = await dsProvider.health({ type: credential.type, data: decryptedData });
+        message = reachable ? 'Alibaba DashScope API key is verified' : 'Invalid or expired DashScope API key';
+      } catch {
+        reachable = false;
+        message = 'Failed to reach Alibaba DashScope API';
+      }
+    } else if (credential.type === 'cloudflare') {
+      try {
+        const cfProvider = mediaRouter.get('cloudflare');
+        reachable = await cfProvider.health({ type: credential.type, data: decryptedData });
+        message = reachable ? 'Cloudflare Workers AI Account ID and Token verified' : 'Invalid Cloudflare Account ID or API Token';
+      } catch {
+        reachable = false;
+        message = 'Failed to reach Cloudflare Workers AI API';
+      }
+    } else if (credential.type === 'pollinations') {
+      message = 'Pollinations.ai is ready (No API Key required)';
+      reachable = true;
     }
 
     res.json({ valid: reachable, message });

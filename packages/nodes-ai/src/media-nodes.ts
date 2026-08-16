@@ -38,6 +38,11 @@ export class GenerateImageNode implements M2MNode {
         default: 'comfyui',
         options: [
           { label: 'ComfyUI Local (FLUX.2 Klein / SDXL)', value: 'comfyui' },
+          { label: 'SiliconCloud (Kolors / SD 3.5)', value: 'siliconflow' },
+          { label: 'Zhipu AI (CogView-3 Plus / CogView-4)', value: 'zhipu' },
+          { label: 'Alibaba Cloud (Wanx 2.1 T2I Turbo)', value: 'dashscope' },
+          { label: 'Cloudflare Workers AI (FLUX Schnell / SDXL Lightning)', value: 'cloudflare' },
+          { label: 'Pollinations.ai (100% Free & Unlimited FLUX)', value: 'pollinations' },
           { label: 'Hugging Face (FLUX Schnell)', value: 'huggingface' },
           { label: 'Black Forest Labs (FLUX Pro / Dev)', value: 'black-forest-labs' }
         ]
@@ -51,6 +56,17 @@ export class GenerateImageNode implements M2MNode {
         options: [
           { label: 'FLUX.2 [klein] 4B (Local Open-Weight)', value: 'flux2-klein-4b' },
           { label: 'Stable Diffusion XL 1.0 (Local)', value: 'sdxl' },
+          { label: 'FLUX.1 [schnell] (SiliconCloud Free/Fast)', value: 'siliconflow-flux-schnell' },
+          { label: 'FLUX.1 [dev] (SiliconCloud Full Quality)', value: 'siliconflow-flux-dev' },
+          { label: 'Qwen-Image (SiliconCloud)', value: 'siliconflow-qwen-image' },
+          { label: 'Z-Image Turbo (SiliconCloud)', value: 'siliconflow-z-image' },
+          { label: 'Kolors (SiliconCloud CN)', value: 'siliconflow-kolors' },
+          { label: 'Stable Diffusion 3.5 Large (SiliconCloud CN)', value: 'siliconflow-sd3.5' },
+          { label: 'CogView-3 Plus (Zhipu BigModel)', value: 'zhipu-cogview-3-plus' },
+          { label: 'Wanx 2.1 T2I Turbo (Alibaba DashScope)', value: 'dashscope-wanx2.1-turbo' },
+          { label: 'FLUX.1 [schnell] (Cloudflare Free)', value: 'cf-flux-schnell' },
+          { label: 'SDXL Lightning (Cloudflare Free)', value: 'cf-sdxl-lightning' },
+          { label: 'FLUX (Pollinations.ai Free & Unlimited)', value: 'pollinations-flux' },
           { label: 'FLUX.1 [schnell] (Hugging Face Free Credit)', value: 'hf-flux-schnell' },
           { label: 'FLUX 1.1 [pro] (BFL Cloud API)', value: 'bfl-flux-pro-1.1' },
           { label: 'FLUX.1 [dev] (BFL Cloud API)', value: 'bfl-flux-dev' }
@@ -61,8 +77,8 @@ export class GenerateImageNode implements M2MNode {
       { name: 'width', displayName: 'Width', type: 'number', default: 1024 },
       { name: 'height', displayName: 'Height', type: 'number', default: 1024 },
       { name: 'seed', displayName: 'Seed', type: 'number' },
-      { name: 'steps', displayName: 'Steps', type: 'number', default: 4 },
-      { name: 'guidance', displayName: 'Guidance Scale / CFG', type: 'number', default: 3.5 },
+      { name: 'steps', displayName: 'Steps', type: 'number', default: 20 },
+      { name: 'guidance', displayName: 'Guidance Scale / CFG', type: 'number', default: 7.0 },
       { name: 'numberOfImages', displayName: 'Number of Images', type: 'number', default: 1 }
     ]
   };
@@ -72,8 +88,12 @@ export class GenerateImageNode implements M2MNode {
   async execute(context: NodeExecutionContext) {
     const { node } = context;
     const model = String(node.parameters.model || 'flux2-klein-4b');
-    const { provider } = this.mediaRouter.resolveProviderForModel(model);
-    const credential = Object.values(context.credentials)[0];
+    const providerHint = node.parameters.provider ? String(node.parameters.provider) : undefined;
+    const { provider } = this.mediaRouter.resolveProviderForModel(model, providerHint);
+    const credential =
+      Object.values(context.credentials).find((c) => c.type === provider.id) ||
+      Object.values(context.credentials).find((c) => Boolean(providerHint && c.type === providerHint)) ||
+      Object.values(context.credentials)[0];
 
     const images = await provider.generateImage(
       {
@@ -112,7 +132,7 @@ export class ImageToVideoNode implements M2MNode {
     icon: 'video',
     inputs: 1,
     outputs: 1,
-    description: 'Animate an input image using local ComfyUI models or Hugging Face cloud inference.',
+    description: 'Animate an input image using local ComfyUI models or cloud video APIs.',
     properties: [
       {
         name: 'provider',
@@ -122,6 +142,9 @@ export class ImageToVideoNode implements M2MNode {
         default: 'comfyui',
         options: [
           { label: 'ComfyUI Local (Wan2.2 / CogVideoX / LTX)', value: 'comfyui' },
+          { label: 'SiliconCloud (Wan 2.2 / Wan 2.1 / CogVideoX)', value: 'siliconflow' },
+          { label: 'Zhipu AI (CogVideoX-Flash / CogVideoX)', value: 'zhipu' },
+          { label: 'Alibaba Cloud (Wanx 2.1 I2V Turbo)', value: 'dashscope' },
           { label: 'Hugging Face Cloud (LTX Video)', value: 'huggingface' }
         ]
       },
@@ -132,6 +155,12 @@ export class ImageToVideoNode implements M2MNode {
         required: true,
         default: 'wan2.2-ti2v-5b',
         options: [
+          { label: 'Wan2.2 I2V A14B (SiliconCloud Latest)', value: 'siliconflow-wan2.2-i2v' },
+          { label: 'Wan2.1 I2V 14B 720P (SiliconCloud)', value: 'siliconflow-wan2.1-i2v' },
+          { label: 'Wan2.1 I2V 14B 720P Turbo (SiliconCloud)', value: 'siliconflow-wan2.1-i2v-turbo' },
+          { label: 'CogVideoX 5B (SiliconCloud)', value: 'siliconflow-cogvideox' },
+          { label: 'CogVideoX-Flash (Zhipu Fast/Free)', value: 'zhipu-cogvideox-flash' },
+          { label: 'Wanx 2.1 I2V Turbo (Alibaba DashScope)', value: 'dashscope-wanx2.1-i2v' },
           { label: 'LTX-Video 0.9.8 13B Distilled (HF Free Credit)', value: 'hf-ltx-video-i2v' },
           { label: 'Wan2.2 TI2V-5B (Local Open-Weight)', value: 'wan2.2-ti2v-5b' },
           { label: 'Wan2.1 I2V (Local)', value: 'wan2.1-i2v' },
@@ -156,8 +185,12 @@ export class ImageToVideoNode implements M2MNode {
   async execute(context: NodeExecutionContext) {
     const { node } = context;
     const model = String(node.parameters.model || 'wan2.2-ti2v-5b');
-    const { provider } = this.mediaRouter.resolveProviderForModel(model);
-    const credential = Object.values(context.credentials)[0];
+    const providerHint = node.parameters.provider ? String(node.parameters.provider) : undefined;
+    const { provider } = this.mediaRouter.resolveProviderForModel(model, providerHint);
+    const credential =
+      Object.values(context.credentials).find((c) => c.type === provider.id) ||
+      Object.values(context.credentials).find((c) => Boolean(providerHint && c.type === providerHint)) ||
+      Object.values(context.credentials)[0];
 
     // Resolve input image from parameter, or fallback to incoming context.input
     let inputImage = resolveMediaInput(node.parameters.image);

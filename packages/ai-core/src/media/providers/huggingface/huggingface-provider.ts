@@ -43,8 +43,21 @@ export class HuggingFaceMediaProvider implements MediaProviderAdapter {
     return this.getProviderInfo();
   }
 
+  private cleanApiKey(credential?: ResolvedMediaCredential): string {
+    const raw = credential?.data.apiKey || credential?.data.token;
+    if (typeof raw !== 'string') return '';
+    let key = raw.trim();
+    if (key.toLowerCase().startsWith('bearer ')) {
+      key = key.slice(7).trim();
+    }
+    if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+      key = key.slice(1, -1).trim();
+    }
+    return key;
+  }
+
   async health(credential?: ResolvedMediaCredential): Promise<boolean> {
-    const token = credential?.data.apiKey || credential?.data.token;
+    const token = this.cleanApiKey(credential);
     if (!token) return false;
     try {
       const res = await fetch('https://huggingface.co/api/whoami-v2', {
@@ -66,13 +79,18 @@ export class HuggingFaceMediaProvider implements MediaProviderAdapter {
     credential?: ResolvedMediaCredential,
     onProgress?: (progress: number) => void
   ): Promise<MediaFile[]> {
-    const token = credential?.data.apiKey || credential?.data.token;
+    const token = this.cleanApiKey(credential);
     if (!token) {
       throw new M2MError('CREDENTIAL_ERROR', 'Hugging Face access token is required', false);
     }
 
     onProgress?.(20);
     const modelId = HF_MODEL_IDS[request.model] || request.model;
+    const rawImageSteps = typeof request.steps === 'number' ? Math.round(request.steps) : undefined;
+    const numInferenceSteps = modelId.includes('schnell')
+      ? (rawImageSteps !== undefined && rawImageSteps >= 1 && rawImageSteps <= 8 ? rawImageSteps : 4)
+      : (rawImageSteps || 25);
+
     let image: Blob;
     try {
       image = await this.clientFactory(String(token)).textToImage(
@@ -82,7 +100,7 @@ export class HuggingFaceMediaProvider implements MediaProviderAdapter {
           inputs: request.prompt,
           parameters: {
             guidance_scale: request.guidance || 3.5,
-            num_inference_steps: request.steps || 4,
+            num_inference_steps: numInferenceSteps,
             seed: request.seed,
             width: request.width,
             height: request.height
@@ -118,7 +136,7 @@ export class HuggingFaceMediaProvider implements MediaProviderAdapter {
     credential?: ResolvedMediaCredential,
     onProgress?: (progress: number) => void
   ): Promise<MediaFile> {
-    const token = credential?.data.apiKey || credential?.data.token;
+    const token = this.cleanApiKey(credential);
     if (!token) {
       throw new M2MError('CREDENTIAL_ERROR', 'Hugging Face access token is required', false);
     }
@@ -136,6 +154,14 @@ export class HuggingFaceMediaProvider implements MediaProviderAdapter {
     const numFrames = Math.max(9, Math.floor((requestedFrames - 1) / 8) * 8 + 1);
     const modelId = HF_MODEL_IDS[request.model] || request.model;
 
+    // Fal.ai LTX Video requires first_pass_num_inference_steps to be an integer <= 12 (default: 8).
+    // When generic node configurations supply steps (e.g. 30 from standard diffusion/Wan defaults),
+    // normalize/clamp it so it strictly satisfies 1 <= first_pass_num_inference_steps <= 12.
+    const rawSteps = typeof request.steps === 'number' ? Math.round(request.steps) : undefined;
+    const firstPassSteps = rawSteps !== undefined && rawSteps >= 1 && rawSteps <= 12
+      ? rawSteps
+      : 8;
+
     onProgress?.(30);
     let video: Blob;
     try {
@@ -152,7 +178,7 @@ export class HuggingFaceMediaProvider implements MediaProviderAdapter {
             resolution: '480p',
             aspect_ratio: this.normalizeAspectRatio(request.aspectRatio),
             frame_rate: fps,
-            first_pass_num_inference_steps: request.steps || 8,
+            first_pass_num_inference_steps: firstPassSteps,
             enable_detail_pass: false,
             expand_prompt: false
           }

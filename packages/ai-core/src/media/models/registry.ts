@@ -305,6 +305,208 @@ export const BUILTIN_MEDIA_MODELS: MediaModel[] = [
       guidance: true,
       aspectRatio: true
     }
+  },
+
+  // SiliconFlow (SiliconCloud) Models
+  {
+    id: 'siliconflow-flux-schnell',
+    provider: 'siliconflow',
+    displayName: 'FLUX.1 [schnell] (SiliconCloud)',
+    task: 'text-to-image',
+    tasks: ['text-to-image'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'High-speed state-of-the-art 12B rectified flow transformer model from Black Forest Labs.',
+    capabilities: { textToImage: true, seed: true, steps: true }
+  },
+  {
+    id: 'siliconflow-flux-dev',
+    provider: 'siliconflow',
+    displayName: 'FLUX.1 [dev] (SiliconCloud)',
+    task: 'text-to-image',
+    tasks: ['text-to-image'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Full-fidelity 12B parameter open-weight guidance-distilled model from Black Forest Labs.',
+    capabilities: { textToImage: true, seed: true, steps: true, guidance: true }
+  },
+  {
+    id: 'siliconflow-qwen-image',
+    provider: 'siliconflow',
+    displayName: 'Qwen-Image (SiliconCloud)',
+    task: 'text-to-image',
+    tasks: ['text-to-image'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Alibaba high-resolution text-to-image foundation model.',
+    capabilities: { textToImage: true, negativePrompt: true, seed: true, steps: true, guidance: true }
+  },
+  {
+    id: 'siliconflow-z-image',
+    provider: 'siliconflow',
+    displayName: 'Z-Image Turbo (SiliconCloud)',
+    task: 'text-to-image',
+    tasks: ['text-to-image'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Tongyi ultra-fast image generation model.',
+    capabilities: { textToImage: true, negativePrompt: true, seed: true }
+  },
+  {
+    id: 'siliconflow-kolors',
+    provider: 'siliconflow',
+    displayName: 'Kolors (Kwai Text-to-Image)',
+    task: 'text-to-image',
+    tasks: ['text-to-image'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'High-quality photorealistic diffusion model with superior East Asian rendering.',
+    capabilities: { textToImage: true, negativePrompt: true, seed: true, steps: true, guidance: true }
+  },
+  {
+    id: 'siliconflow-sd3.5',
+    provider: 'siliconflow',
+    displayName: 'Stable Diffusion 3.5 Large',
+    task: 'text-to-image',
+    tasks: ['text-to-image'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Flagship open-weight 8B image generation model by Stability AI.',
+    capabilities: { textToImage: true, negativePrompt: true, seed: true, steps: true, guidance: true }
+  },
+  {
+    id: 'siliconflow-wan2.2-i2v',
+    provider: 'siliconflow',
+    displayName: 'Wan2.2 Image-to-Video A14B (SiliconCloud)',
+    task: 'image-to-video',
+    tasks: ['image-to-video'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Latest Wan2.2 state-of-the-art image-to-video foundation model on SiliconFlow.',
+    capabilities: { imageToVideo: true, seed: true }
+  },
+  {
+    id: 'siliconflow-wan2.1-i2v',
+    provider: 'siliconflow',
+    displayName: 'Wan2.1 Image-to-Video 14B (720P)',
+    task: 'image-to-video',
+    tasks: ['image-to-video'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Alibaba open-source video foundation model with cinematic motion.',
+    capabilities: { imageToVideo: true, seed: true }
+  },
+  {
+    id: 'siliconflow-cogvideox',
+    provider: 'siliconflow',
+    displayName: 'CogVideoX 5B',
+    task: 'text-to-video',
+    tasks: ['text-to-video', 'image-to-video'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'High-coherence video generation model by Zhipu AI / THUDM.',
+    capabilities: { textToVideo: true, imageToVideo: true, seed: true }
+  },
+
+  // Zhipu AI Models
+  {
+    id: 'zhipu-cogview-3-plus',
+    provider: 'zhipu',
+    displayName: 'CogView-3 Plus',
+    task: 'text-to-image',
+    tasks: ['text-to-image'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Zhipu BigModel text-to-image model with high text-image semantic alignment.',
+    capabilities: { textToImage: true }
+  },
+  {
+    id: 'zhipu-cogvideox-flash',
+    provider: 'zhipu',
+    displayName: 'CogVideoX-Flash (Free/Fast Video)',
+    task: 'image-to-video',
+    tasks: ['image-to-video', 'text-to-video'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Fast and cost-effective video generation on Zhipu AI platform.',
+    capabilities: { imageToVideo: true, textToVideo: true }
+  },
+
+  // Alibaba Cloud DashScope Wanx Models
+  {
+    id: 'dashscope-wanx2.1-turbo',
+    provider: 'dashscope',
+    displayName: 'Wanx 2.1 T2I Turbo',
+    task: 'text-to-image',
+    tasks: ['text-to-image'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Alibaba Tongyi Wanxiang high-speed photorealistic image generation.',
+    capabilities: { textToImage: true, negativePrompt: true, seed: true }
+  },
+  {
+    id: 'dashscope-wanx2.1-i2v',
+    provider: 'dashscope',
+    displayName: 'Wanx 2.1 I2V Turbo',
+    task: 'image-to-video',
+    tasks: ['image-to-video'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Alibaba Tongyi Wanxiang Image-to-Video generation.',
+    capabilities: { imageToVideo: true }
+  },
+
+  // Cloudflare Workers AI Models
+  {
+    id: 'cf-flux-schnell',
+    provider: 'cloudflare',
+    displayName: 'FLUX.1 [schnell] (Cloudflare 10k Neurons Free)',
+    task: 'text-to-image',
+    tasks: ['text-to-image'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Ultra-fast FLUX inference using Cloudflare Workers AI free daily quota.',
+    capabilities: { textToImage: true, steps: true }
+  },
+  {
+    id: 'cf-sdxl-lightning',
+    provider: 'cloudflare',
+    displayName: 'SDXL Lightning (Cloudflare Free)',
+    task: 'text-to-image',
+    tasks: ['text-to-image'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT', 'BYOK'],
+    description: 'Sub-second image generation powered by ByteDance SDXL-Lightning on Cloudflare.',
+    capabilities: { textToImage: true, steps: true }
+  },
+
+  // Pollinations.ai Models
+  {
+    id: 'pollinations-flux',
+    provider: 'pollinations',
+    displayName: 'FLUX (Pollinations.ai Free & Unlimited)',
+    task: 'text-to-image',
+    tasks: ['text-to-image'],
+    executionMode: 'cloud',
+    costTier: 'free-credit',
+    badges: ['FREE CREDIT'],
+    description: 'Instant free unlimited FLUX generation without API key.',
+    capabilities: { textToImage: true, seed: true }
   }
 ];
 
