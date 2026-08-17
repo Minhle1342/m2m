@@ -11,8 +11,11 @@ const route = useRoute(),
   app = useAppStore(),
   execution = ref<Execution>(),
   selected = ref<NodeExecution>(),
-  source = ref<EventSource>();
-const { t } = useI18n();
+  source = ref<EventSource>(),
+  copiedKey = ref<string | null>(null);
+
+const { t, locale } = useI18n();
+const isVi = computed(() => locale.value === 'vi');
 
 const duration = computed(() =>
   execution.value?.startedAt && execution.value.finishedAt
@@ -37,6 +40,57 @@ async function retry() {
   const run = await api<Execution>(`/executions/${route.params.id}/retry`, json('POST'));
   app.notify(t('executions.retryQueued'));
   router.push(`/executions/${run.id}`);
+}
+
+async function copyContent(key: string, data: unknown) {
+  if (data === undefined || data === null) {
+    app.fail(new Error(isVi.value ? 'Không có dữ liệu để sao chép' : 'No data to copy'));
+    return;
+  }
+  const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  try {
+    await navigator.clipboard.writeText(text);
+    copiedKey.value = key;
+    setTimeout(() => {
+      if (copiedKey.value === key) copiedKey.value = null;
+    }, 2000);
+    app.notify(isVi.value ? 'Đã sao chép vào bộ nhớ tạm!' : 'Copied to clipboard!');
+  } catch {
+    app.fail(new Error(isVi.value ? 'Không thể sao chép văn bản' : 'Failed to copy text'));
+  }
+}
+
+function copyAllDebug() {
+  if (!execution.value) return;
+  const allDebugInfo = {
+    workflowId: execution.value.workflowId,
+    executionId: execution.value.id,
+    mode: execution.value.mode,
+    status: execution.value.status,
+    createdAt: execution.value.createdAt,
+    durationMs: duration.value,
+    executionError: execution.value.error,
+    selectedNode: selected.value
+      ? {
+          nodeId: selected.value.nodeId,
+          nodeName: selected.value.nodeName,
+          status: selected.value.status,
+          attempt: selected.value.attempt,
+          durationMs: selected.value.durationMs,
+          input: selected.value.input,
+          output: selected.value.output,
+          error: selected.value.error
+        }
+      : null,
+    allNodes: execution.value.nodes?.map((n) => ({
+      nodeId: n.nodeId,
+      nodeName: n.nodeName,
+      status: n.status,
+      durationMs: n.durationMs,
+      error: n.error
+    }))
+  };
+  void copyContent('all-debug', allDebugInfo);
 }
 
 onMounted(async () => {
@@ -65,12 +119,24 @@ onBeforeUnmount(() => source.value?.close());
           {{ duration === null ? 'running' : duration + ' ms' }}
         </p>
       </div>
-      <button @click="retry">{{ t('executions.retry') }}</button>
+      <div class="page-actions">
+        <button class="copy-debug-header-btn" @click="copyAllDebug">
+          {{ copiedKey === 'all-debug' ? (isVi ? '✓ Đã chép Debug' : '✓ Copied Debug') : (isVi ? '📋 Sao chép toàn bộ Debug' : '📋 Copy Full Debug') }}
+        </button>
+        <button @click="retry">{{ t('executions.retry') }}</button>
+      </div>
     </header>
+
     <div v-if="execution.error" class="error-box">
-      <strong>{{ t('executions.failed') }}</strong>
+      <div class="block-header">
+        <strong>{{ t('executions.failed') }}</strong>
+        <button class="mini-copy-btn error-btn" @click="copyContent('exec-error', execution.error)">
+          {{ copiedKey === 'exec-error' ? (isVi ? '✓ Đã chép lỗi' : '✓ Copied error') : (isVi ? '📋 Sao chép lỗi' : '📋 Copy error') }}
+        </button>
+      </div>
       <pre>{{ JSON.stringify(execution.error, null, 2) }}</pre>
     </div>
+
     <div class="execution-grid">
       <aside class="node-timeline">
         <button
@@ -86,22 +152,140 @@ onBeforeUnmount(() => source.value?.close());
           </div>
         </button>
       </aside>
+
       <div v-if="selected" class="inspector">
-        <h2>{{ selected.nodeName }}</h2>
+        <div class="inspector-head">
+          <h2>{{ selected.nodeName }}</h2>
+          <button class="mini-copy-btn" @click="copyContent('node-all', selected)">
+            {{ copiedKey === 'node-all' ? (isVi ? '✓ Đã chép node' : '✓ Copied node') : (isVi ? '📋 Chép toàn bộ node này' : '📋 Copy this node') }}
+          </button>
+        </div>
+
         <div class="inspect-block">
-          <label>{{ t('executions.input') }}</label>
+          <div class="block-header">
+            <label>{{ t('executions.input') }} (ĐẦU VÀO)</label>
+            <button class="mini-copy-btn" :disabled="!selected.input" @click="copyContent('input', selected.input)">
+              {{ copiedKey === 'input' ? (isVi ? '✓ Đã chép' : '✓ Copied') : (isVi ? '📋 Sao chép' : '📋 Copy') }}
+            </button>
+          </div>
           <pre>{{ JSON.stringify(selected.input, null, 2) }}</pre>
         </div>
+
         <div class="inspect-block">
-          <label>{{ t('executions.output') }}</label>
+          <div class="block-header">
+            <label>{{ t('executions.output') }} (ĐẦU RA)</label>
+            <button class="mini-copy-btn" :disabled="!selected.output" @click="copyContent('output', selected.output)">
+              {{ copiedKey === 'output' ? (isVi ? '✓ Đã chép' : '✓ Copied') : (isVi ? '📋 Sao chép' : '📋 Copy') }}
+            </button>
+          </div>
           <pre>{{ JSON.stringify(selected.output, null, 2) }}</pre>
         </div>
+
         <div v-if="selected.error" class="inspect-block error">
-          <label>{{ t('executions.error') }}</label>
+          <div class="block-header">
+            <label>{{ t('executions.error') }} (LỖI)</label>
+            <button class="mini-copy-btn error-btn" @click="copyContent('error', selected.error)">
+              {{ copiedKey === 'error' ? (isVi ? '✓ Đã chép lỗi' : '✓ Copied error') : (isVi ? '📋 Sao chép lỗi' : '📋 Copy error') }}
+            </button>
+          </div>
           <pre>{{ JSON.stringify(selected.error, null, 2) }}</pre>
         </div>
       </div>
+
       <div v-else class="empty">{{ t('executions.selectNode') }}</div>
     </div>
   </section>
 </template>
+
+<style scoped>
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inspector-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.inspector-head h2 {
+  margin: 0;
+}
+
+.block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.block-header label {
+  font: 10px 'Space Mono', monospace;
+  color: #818a9c;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.mini-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-family: 'Space Mono', monospace;
+  background: #191f2b;
+  border: 1px solid #2f384a;
+  border-radius: 6px;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mini-copy-btn:hover:not(:disabled) {
+  background: #252e40;
+  border-color: #586580;
+  color: #fff;
+  transform: scale(1.02);
+}
+
+.mini-copy-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.mini-copy-btn.error-btn {
+  background: rgba(255, 100, 124, 0.15);
+  border-color: rgba(255, 100, 124, 0.35);
+  color: #ff9aaa;
+}
+
+.mini-copy-btn.error-btn:hover:not(:disabled) {
+  background: rgba(255, 100, 124, 0.25);
+  border-color: #ff647c;
+  color: #fff;
+}
+
+.copy-debug-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #1c2230;
+  border: 1px solid #3b465c;
+  color: #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.copy-debug-header-btn:hover {
+  background: #242c3d;
+  border-color: var(--lime, #c7ff4a);
+  color: var(--lime, #c7ff4a);
+}
+</style>

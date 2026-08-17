@@ -39,6 +39,8 @@ export interface ExecuteWorkflowInput {
   registry: NodeRegistry;
   hooks: WorkflowExecutorHooks;
   env?: Record<string, string>;
+  startNodeId?: string;
+  initialResults?: Record<string, NodeExecutionResult>;
 }
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
@@ -70,14 +72,31 @@ export async function executeWorkflow(input: ExecuteWorkflowInput): Promise<Reco
   if (!validation.valid) {
     throw new M2MError('VALIDATION_ERROR', 'Workflow is invalid', false, validation.errors);
   }
-  const results: Record<string, NodeExecutionResult> = {};
+  const results: Record<string, NodeExecutionResult> = { ...(input.initialResults ?? {}) };
   const incoming = new Map<string, typeof definition.edges>();
   for (const edge of definition.edges) {
-    incoming.set(edge.target, [...(incoming.get(edge.target) ?? []), edge]);
+    const list = incoming.get(edge.target) ?? [];
+    list.push(edge);
+    incoming.set(edge.target, list);
   }
-  const queue = definition.nodes
-    .filter((node) => registry.get(node.type).metadata.category === 'trigger')
-    .map((node) => node.id);
+  const explicitStartNodeId =
+    input.startNodeId ||
+    (typeof input.triggerData === 'object' && input.triggerData !== null && 'startNodeId' in input.triggerData
+      ? String((input.triggerData as Record<string, unknown>).startNodeId)
+      : undefined);
+
+  const initialQueue: string[] = [];
+  if (explicitStartNodeId && definition.nodes.some((n) => n.id === explicitStartNodeId)) {
+    initialQueue.push(explicitStartNodeId);
+  } else {
+    for (const node of definition.nodes) {
+      if (registry.get(node.type).metadata.category === 'trigger') {
+        initialQueue.push(node.id);
+      }
+    }
+  }
+
+  const queue = [...initialQueue];
   const completed = new Set<string>();
   const skipped = new Set<string>();
   const queued = new Set(queue);
@@ -107,6 +126,18 @@ export async function executeWorkflow(input: ExecuteWorkflowInput): Promise<Reco
           if (completed.has(candidate.id) || skipped.has(candidate.id) || queued.has(candidate.id)) continue;
           const candidateEdges = incoming.get(candidate.id) ?? [];
           if (candidateEdges.length === 0) continue;
+
+          // If execution started from a specific node, activate candidate if any parent completed from this run
+          if (explicitStartNodeId) {
+            const hasActiveCompletedParent = candidateEdges.some((edge) => completed.has(edge.source) && edgeIsActive(edge));
+            if (hasActiveCompletedParent) {
+              queue.push(candidate.id);
+              queued.add(candidate.id);
+              changed = true;
+            }
+            continue;
+          }
+
           if (!candidateEdges.every((edge) => completed.has(edge.source) || skipped.has(edge.source))) continue;
           if (candidateEdges.some(edgeIsActive)) {
             queue.push(candidate.id);
@@ -126,12 +157,26 @@ export async function executeWorkflow(input: ExecuteWorkflowInput): Promise<Reco
       const nodeId = queue.shift()!;
       const node = definition.nodes.find((item) => item.id === nodeId)!;
       const parentEdges = (incoming.get(node.id) ?? []).filter(edgeIsActive);
-      const inputJson =
-        parentEdges.length === 0
-          ? input.triggerData ?? {}
-          : parentEdges.length === 1
-            ? results[parentEdges[0].source]?.json
-            : parentEdges.map((edge) => results[edge.source]?.json);
+      let inputJson: unknown;
+      if (parentEdges.length === 1) {
+        inputJson = results[parentEdges[0].source]?.json ?? input.triggerData ?? {};
+      } else if (parentEdges.length > 1) {
+        inputJson = parentEdges.map((edge) => results[edge.source]?.json);
+      } else {
+        // If no active parent edge in this run (e.g. root node or running from startNodeId), check if results exist for incoming parents
+        const allIncomingEdges = incoming.get(node.id) ?? [];
+        const availableParentResults = allIncomingEdges
+          .map((edge) => results[edge.source]?.json)
+          .filter(Boolean);
+
+        if (availableParentResults.length === 1) {
+          inputJson = availableParentResults[0];
+        } else if (availableParentResults.length > 1) {
+          inputJson = availableParentResults;
+        } else {
+          inputJson = input.triggerData ?? {};
+        }
+      }
       if (node.disabled) {
         results[node.id] = { json: inputJson };
         completed.add(node.id);

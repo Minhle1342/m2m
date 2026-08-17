@@ -22,14 +22,7 @@ const media = computed(() => props.data.media);
 const isImage = computed(() => media.value?.type === 'image');
 const isVideo = computed(() => media.value?.type === 'video');
 
-const isImageGenNode = computed(() => {
-  const nt = props.data.nodeType;
-  return nt === 'm2m.media.generateImage' || nt === 'm2m.media.editImage';
-});
-
 const miniVideoRef = ref<HTMLVideoElement>();
-const fileInputRef = ref<HTMLInputElement>();
-const isDragOver = ref(false);
 
 function playMiniVideo() {
   miniVideoRef.value?.play().catch(() => {});
@@ -51,41 +44,6 @@ function handleAction(event: string, e: Event, extra?: Record<string, unknown>) 
       }
     })
   );
-}
-
-function triggerUpload(e: Event) {
-  e.stopPropagation();
-  fileInputRef.value?.click();
-}
-
-function onFileSelected(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (file) {
-    handleAction('upload', e, { file });
-  }
-  input.value = '';
-}
-
-function onDrop(e: DragEvent) {
-  e.preventDefault();
-  e.stopPropagation();
-  isDragOver.value = false;
-  const file = e.dataTransfer?.files?.[0];
-  if (file && file.type.startsWith('image/')) {
-    handleAction('upload', e, { file });
-  }
-}
-
-function onDragOver(e: DragEvent) {
-  e.preventDefault();
-  e.stopPropagation();
-  isDragOver.value = true;
-}
-
-function onDragLeave(e: DragEvent) {
-  e.stopPropagation();
-  isDragOver.value = false;
 }
 </script>
 
@@ -115,6 +73,18 @@ function onDragLeave(e: DragEvent) {
         <small>{{ tNodeName(data.nodeType, data.metadata?.displayName || data.nodeType) }}</small>
       </div>
       <span v-if="data.status" class="node-state">{{ data.status }}</span>
+
+      <!-- Run from this node button -->
+      <button
+        class="node-run-btn"
+        :class="{ running: data.status === 'running' }"
+        :title="isVi ? 'Chạy tiếp tục từ node này đến cuối quy trình' : 'Execute workflow starting from this node to end'"
+        :disabled="data.status === 'running'"
+        @click="(e) => handleAction('run-from-node', e)"
+      >
+        <span v-if="data.status === 'running'" class="run-spinner">⏳</span>
+        <span v-else class="run-icon">▶</span>
+      </button>
     </div>
 
     <!-- Media Canvas Preview Area (Click to Zoom) -->
@@ -160,42 +130,8 @@ function onDragLeave(e: DragEvent) {
       </div>
     </div>
 
-    <!-- Upload / Replace Image for Image-Gen Nodes -->
-    <input
-      ref="fileInputRef"
-      type="file"
-      accept="image/png,image/jpeg,image/webp"
-      style="display: none"
-      @change="onFileSelected"
-    />
-
-    <!-- Upload Drop Zone (no media yet) -->
-    <div
-      v-if="isImageGenNode && !media && !data.mediaDeleted"
-      class="upload-drop-zone"
-      :class="{ 'drag-over': isDragOver }"
-      @click="triggerUpload"
-      @drop="onDrop"
-      @dragover="onDragOver"
-      @dragleave="onDragLeave"
-    >
-      <span class="upload-icon">📤</span>
-      <span class="upload-text">{{ isVi ? 'Kéo thả hoặc bấm để tải ảnh lên' : 'Drag & drop or click to upload image' }}</span>
-      <small class="upload-hint">PNG · JPG · WebP · {{ isVi ? 'tối đa 10MB' : 'max 10MB' }}</small>
-    </div>
-
-    <!-- Replace Image Button (has media already) -->
-    <button
-      v-if="isImageGenNode && media && isImage && !data.mediaDeleted"
-      class="replace-image-btn"
-      :title="isVi ? 'Thay đổi ảnh' : 'Replace image'"
-      @click="triggerUpload"
-    >
-      📤 {{ isVi ? 'Thay đổi ảnh' : 'Replace image' }}
-    </button>
-
     <!-- Deleted Notice -->
-    <div v-else-if="data.mediaDeleted" class="media-deleted-notice">
+    <div v-if="data.mediaDeleted" class="media-deleted-notice">
       <small>⚠️ {{ t('media.mediaDeletedNotice') || 'Media deleted' }}</small>
       <button class="regen-link" @click="(e) => handleAction('regenerate', e)">↻ {{ t('media.regenerate') || 'Regenerate' }}</button>
     </div>
@@ -239,17 +175,6 @@ function onDragLeave(e: DragEvent) {
 .flow-node:hover {
   border-color: #5d6f94;
   box-shadow: 0 10px 28px #00000088;
-}
-
-.flow-node.uploading {
-  border-color: #6b8aff;
-  box-shadow: 0 0 0 2px rgba(107, 138, 255, 0.2);
-  animation: upload-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes upload-pulse {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(107, 138, 255, 0.15); }
-  50% { box-shadow: 0 0 0 4px rgba(107, 138, 255, 0.3); }
 }
 
 .node-main-row {
@@ -301,6 +226,56 @@ function onDragLeave(e: DragEvent) {
   border-radius: 4px;
   background: #2b3548;
   color: #93c5fd;
+}
+
+.node-run-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  background: rgba(59, 244, 156, 0.12);
+  border: 1px solid rgba(59, 244, 156, 0.35);
+  color: #3bf49c;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  line-height: 1;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+.node-run-btn:hover:not(:disabled) {
+  background: #3bf49c;
+  color: #0b0e14;
+  border-color: #3bf49c;
+  box-shadow: 0 0 10px rgba(59, 244, 156, 0.5);
+  transform: scale(1.12);
+}
+
+.node-run-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.node-run-btn.running {
+  background: rgba(234, 179, 8, 0.18);
+  border-color: rgba(234, 179, 8, 0.5);
+  color: #facc15;
+  cursor: not-allowed;
+  animation: pulse-spin 1.2s infinite ease-in-out;
+}
+
+.node-run-btn .run-icon {
+  font-size: 10px;
+  transform: translateX(1px);
+}
+
+@keyframes pulse-spin {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.95); }
 }
 
 .canvas-media-card {
@@ -436,71 +411,5 @@ function onDragLeave(e: DragEvent) {
   font-size: 10px;
   padding: 2px 4px;
   cursor: pointer;
-}
-
-.upload-drop-zone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 14px 10px;
-  border: 1.5px dashed #3a4a66;
-  border-radius: 8px;
-  background: #111825;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.upload-drop-zone:hover {
-  border-color: var(--lime, #3bf49c);
-  background: #141e2e;
-}
-
-.upload-drop-zone.drag-over {
-  border-color: var(--lime, #3bf49c);
-  background: #162218;
-  box-shadow: inset 0 0 12px rgba(59, 244, 156, 0.08);
-}
-
-.upload-icon {
-  font-size: 18px;
-}
-
-.upload-text {
-  font-size: 10px;
-  color: #a0aec0;
-  text-align: center;
-  line-height: 1.3;
-}
-
-.upload-drop-zone:hover .upload-text {
-  color: #e2e8f0;
-}
-
-.upload-hint {
-  font-size: 8px;
-  color: #5a6478;
-  font-family: 'Space Mono', monospace;
-}
-
-.replace-image-btn {
-  display: block;
-  width: 100%;
-  padding: 5px 0;
-  border: 1px solid #2d3a50;
-  border-radius: 6px;
-  background: #151c2a;
-  color: #93acd0;
-  font-size: 10px;
-  cursor: pointer;
-  text-align: center;
-  transition: all 0.15s ease;
-}
-
-.replace-image-btn:hover {
-  border-color: var(--lime, #3bf49c);
-  color: #e2e8f0;
-  background: #1a2536;
 }
 </style>

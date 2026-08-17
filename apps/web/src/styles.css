@@ -687,4 +687,103 @@
   background: #4b6285;
 }
 
+/* Toast Notification with Dismiss Button */
+.toast {
+  position: fixed;
+  right: 25px;
+  bottom: 25px;
+  background: #d4ff73;
+  color: #101309;
+  border-radius: 9px;
+  padding: 11px 14px 11px 16px;
+  font-weight: 600;
+  z-index: 200;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 440px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.toast.danger {
+  background: #ff7188;
+  color: #22070c;
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.toast-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.toast-close-btn {
+  border: 0;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.toast-close-btn:hover {
+  background: rgba(0, 0, 0, 0.2);
+  transform: scale(1.08);
+}
+
+.toast-close-btn:active {
+  transform: scale(0.95);
+}
+
+/* Toast Vue Transitions */
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(14px) scale(0.96);
+  pointer-events: none;
+}
+
+/* Execution Chip Close Button */
+.execution-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chip-close-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.chip-close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+
 

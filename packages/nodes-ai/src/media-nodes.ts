@@ -6,13 +6,51 @@ import { M2MError, type MediaFile } from '@m2m/shared';
 
 function resolveMediaInput(val: unknown): MediaFile | string | undefined {
   if (!val) return undefined;
-  if (typeof val === 'string') return val;
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (trimmed.startsWith('{{') && trimmed.endsWith('}}')) return undefined;
+    if (trimmed.length > 0) return trimmed;
+    return undefined;
+  }
+  if (Array.isArray(val)) {
+    for (const item of val) {
+      const res = resolveMediaInput(item);
+      if (res) return res;
+    }
+    return undefined;
+  }
   if (typeof val === 'object') {
     const record = val as Record<string, unknown>;
-    if (record.media && typeof record.media === 'object') return record.media as MediaFile;
-    if (record.video && typeof record.video === 'object') return record.video as MediaFile;
-    if (Array.isArray(record.images) && record.images[0]) return record.images[0] as MediaFile;
-    if (record.localPath || record.previewUrl || record.id) return record as unknown as MediaFile;
+    if (record.media) {
+      const resolved = resolveMediaInput(record.media);
+      if (resolved) return resolved;
+    }
+    if (record.image) {
+      const resolved = resolveMediaInput(record.image);
+      if (resolved) return resolved;
+    }
+    if (record.video) {
+      const resolved = resolveMediaInput(record.video);
+      if (resolved) return resolved;
+    }
+    if (Array.isArray(record.images) && record.images.length > 0) {
+      const resolved = resolveMediaInput(record.images[0]);
+      if (resolved) return resolved;
+    }
+    if (record.savedMedia) {
+      const resolved = resolveMediaInput(record.savedMedia);
+      if (resolved) return resolved;
+    }
+    if (record.localPath || record.previewUrl || record.id || record.url) {
+      return record as unknown as MediaFile;
+    }
+    // Scan all values of object for any embedded media
+    for (const subVal of Object.values(record)) {
+      if (subVal && typeof subVal === 'object') {
+        const found = resolveMediaInput(subVal);
+        if (found) return found;
+      }
+    }
   }
   return undefined;
 }

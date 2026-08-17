@@ -12,13 +12,43 @@ const FORBIDDEN = /(?:\bprocess\b|\brequire\b|\bimport\b|\bglobalThis\b|\bFuncti
 const EXPRESSION = /\{\{([\s\S]*?)\}\}/g;
 
 function pathValue(root: unknown, path: string): unknown {
-  const tokens = [...path.matchAll(/(?:^|\.)([A-Za-z_$][\w$]*)|\["([^"]+)"\]|\['([^']+)'\]|\[(\d+)\]/g)].map(
-    (match) => match[1] ?? match[2] ?? match[3] ?? match[4],
-  );
-  let value = root;
+  if (root === undefined || root === null) return undefined;
+  if (!path || path === '') return root;
+
+  // If root is a primitive string and path is text-related, return root
+  if (typeof root === 'string') {
+    if (['.text', '.content', '.result', '.output', '.prompt', '.message', '.data'].includes(path)) {
+      return root;
+    }
+  }
+
+  const tokens = [...path.matchAll(/(?:^|\.)([A-Za-z_$][\w$]*)|\["([^"]+)"\]|\['([^']+)'\]|\[(\d+)\]/g)]
+    .map((match) => match[1] ?? match[2] ?? match[3] ?? match[4])
+    .filter((token): token is string => typeof token === 'string' && token.length > 0);
+  let value: unknown = root;
   for (const token of tokens) {
-    if (value === null || typeof value !== 'object') return undefined;
-    value = (value as Record<string, unknown>)[token];
+    if (value === null || typeof value !== 'object') {
+      if (typeof value === 'string' && ['text', 'content', 'result', 'output', 'prompt', 'message'].includes(token)) {
+        return value;
+      }
+      return undefined;
+    }
+    const record = value as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(record, token) || token in record) {
+      value = record[token];
+    } else if (token === 'text' && typeof record.content === 'string') {
+      value = record.content;
+    } else if (token === 'text' && typeof record.result === 'string') {
+      value = record.result;
+    } else if (token === 'text' && typeof record.prompt === 'string') {
+      value = record.prompt;
+    } else if (token === 'text' && typeof record.message === 'string') {
+      value = record.message;
+    } else if (token === 'text' && typeof record.description === 'string') {
+      value = record.description;
+    } else {
+      value = record[token];
+    }
   }
   return value;
 }
@@ -58,7 +88,8 @@ export function resolveExpressions(value: unknown, context: ExpressionContext): 
   const matches = [...value.matchAll(EXPRESSION)];
   if (matches.length === 0) return value;
   if (matches.length === 1 && matches[0][0] === value) {
-    return evaluateExpression(matches[0][1], context);
+    const evaluated = evaluateExpression(matches[0][1], context);
+    return evaluated !== undefined ? evaluated : '';
   }
   return value.replace(EXPRESSION, (_, expression: string) => {
     const result = evaluateExpression(expression, context);

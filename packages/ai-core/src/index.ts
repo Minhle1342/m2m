@@ -95,6 +95,145 @@ function mapProviderError(error: unknown): never {
   });
 }
 
+export function repairJsonString(input: string): string {
+  let text = input.trim();
+
+  // 1. Strip markdown code fences
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)(?:```|$)/i);
+  if (fenceMatch && fenceMatch[1]) {
+    text = fenceMatch[1].trim();
+  }
+
+  // 2. Extract boundary from first '{' or '['
+  const firstBrace = text.indexOf('{');
+  const firstBracket = text.indexOf('[');
+  let startIdx = 0;
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    startIdx = firstBrace;
+  } else if (firstBracket !== -1) {
+    startIdx = firstBracket;
+  }
+  text = text.slice(startIdx).trim();
+
+  // 3. Remove trailing commas before } or ]
+  text = text.replace(/,\s*([}\]])/g, '$1');
+
+  // 4. Convert single quoted keys/values: 'key': 'value' -> "key": "value"
+  text = text.replace(/([{,]\s*)'([^']+)'\s*:/g, '$1"$2":');
+  text = text.replace(/:\s*'([^']*)'/g, ':"$1"');
+
+  // 5. Balance unclosed quotes and brackets
+  let inString = false;
+  let isEscaped = false;
+  const stack: ('{' | '[')[] = [];
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (isEscaped) {
+      isEscaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      isEscaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === '{' || char === '[') {
+        stack.push(char);
+      } else if (char === '}') {
+        if (stack.length && stack[stack.length - 1] === '{') stack.pop();
+      } else if (char === ']') {
+        if (stack.length && stack[stack.length - 1] === '[') stack.pop();
+      }
+    }
+  }
+
+  // If ended while still inside a string (unterminated string due to token cutoff)
+  if (inString) {
+    text += '"';
+  }
+
+  // Remove trailing comma that might have been exposed
+  text = text.replace(/,\s*$/, '');
+
+  // Close remaining open brackets and braces in reverse order
+  while (stack.length > 0) {
+    const open = stack.pop();
+    if (open === '{') text += '}';
+    else if (open === '[') text += ']';
+  }
+
+  return text;
+}
+
+export function extractCleanJson(rawText: string): unknown {
+  const trimmed = rawText.trim();
+
+  // 1. Direct JSON parse
+  try {
+    return JSON.parse(trimmed);
+  } catch {}
+
+  // 2. Strip Markdown code blocks
+  const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch && codeBlockMatch[1]) {
+    try {
+      return JSON.parse(codeBlockMatch[1].trim());
+    } catch {}
+  }
+
+  // 3. Repaired text
+  try {
+    const repaired = repairJsonString(trimmed);
+    return JSON.parse(repaired);
+  } catch {}
+
+  // 4. Extract JSON object boundary: first '{' to last '}'
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1));
+    } catch {
+      try {
+        return JSON.parse(repairJsonString(trimmed.slice(firstBrace)));
+      } catch {}
+    }
+  }
+
+  // 5. Extract JSON array boundary: first '[' to last ']'
+  const firstBracket = trimmed.indexOf('[');
+  const lastBracket = trimmed.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    try {
+      return JSON.parse(trimmed.slice(firstBracket, lastBracket + 1));
+    } catch {
+      try {
+        return JSON.parse(repairJsonString(trimmed.slice(firstBracket)));
+      } catch {}
+    }
+  }
+
+  // 6. Regex heuristic fallback for key-value pairs (e.g. classification or simple object)
+  const labelMatch = trimmed.match(/"?label"?\s*[:=]\s*["']?([A-Za-z0-9_\- ]+)["']?/i);
+  if (labelMatch && labelMatch[1]) {
+    const confMatch = trimmed.match(/"?confidence"?\s*[:=]\s*([0-9.]+)/i);
+    const reasonMatch = trimmed.match(/"?reason"?\s*[:=]\s*["']([^"'\n]+)["']?/i);
+    return {
+      label: labelMatch[1].trim(),
+      confidence: confMatch ? parseFloat(confMatch[1]) : 1.0,
+      reason: reasonMatch ? reasonMatch[1].trim() : `Classified as ${labelMatch[1].trim()}`,
+    };
+  }
+
+  // 7. Final attempt
+  return JSON.parse(trimmed);
+}
+
 abstract class BaseProvider implements AIProviderAdapter {
   abstract readonly id: string;
   abstract health(): Promise<boolean>;
@@ -156,10 +295,10 @@ abstract class BaseProvider implements AIProviderAdapter {
   async generateStructured<T>(input: StructuredInput<T>): Promise<T> {
     const result = await this.generateText({
       ...input,
-      system: `${input.system ?? ''}\nReturn only valid JSON.`,
+      system: `${input.system ?? ''}\nReturn only valid raw JSON without markdown code fences or backticks.`,
     });
     try {
-      return input.parse(JSON.parse(result.text));
+      return input.parse(extractCleanJson(result.text));
     } catch (error) {
       throw new M2MError(
         'AI_STRUCTURED_OUTPUT_ERROR',

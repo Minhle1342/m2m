@@ -1,6 +1,6 @@
 import { createServer,type Server } from 'node:http';
 import { afterAll,beforeAll,describe,expect,it } from 'vitest';
-import { OpenAICompatibleProvider } from '../packages/ai-core/src/index.js';
+import { OpenAICompatibleProvider, extractCleanJson } from '../packages/ai-core/src/index.js';
 import { M2MError } from '../packages/shared/src/index.js';
 
 describe('Vercel AI SDK provider adapter',()=>{
@@ -29,5 +29,33 @@ describe('Vercel AI SDK provider adapter',()=>{
   });
   it('classifies temporary provider errors as retryable',async()=>{
     await expect(new OpenAICompatibleProvider().generateText({model:'test-model',prompt:'fail',apiKey:'test-key',baseUrl})).rejects.toMatchObject<M2MError>({code:'AI_PROVIDER_ERROR',retryable:true});
+  });
+
+  it('correctly parses markdown-wrapped JSON code blocks in structured output', () => {
+    expect(extractCleanJson('{"label":"positive","confidence":0.95}')).toEqual({ label: 'positive', confidence: 0.95 });
+    expect(extractCleanJson('```json\n{\n  "label": "epic_action",\n  "confidence": 0.98\n}\n```')).toEqual({ label: 'epic_action', confidence: 0.98 });
+    expect(extractCleanJson('Here is the result:\n```json\n{"label":"calm_luxury","confidence":0.9}\n```\nHope it helps!')).toEqual({ label: 'calm_luxury', confidence: 0.9 });
+    expect(extractCleanJson('```\n["item1", "item2"]\n```')).toEqual(['item1', 'item2']);
+  });
+
+  it('repairs truncated and dirty JSON with unterminated strings and trailing commas', () => {
+    // Unterminated string due to token cutoff
+    expect(extractCleanJson('{"label": "epic_action", "confidence": 0.95, "reason": "Tuyệt vời! Với vai trò là một đạo')).toEqual({
+      label: 'epic_action',
+      confidence: 0.95,
+      reason: 'Tuyệt vời! Với vai trò là một đạo',
+    });
+
+    // Trailing comma and single quotes
+    expect(extractCleanJson("{\n 'label': 'calm_luxury',\n 'confidence': 0.88,\n}")).toEqual({
+      label: 'calm_luxury',
+      confidence: 0.88,
+    });
+
+    // Truncated object cut off before closing brace
+    expect(extractCleanJson('{"label": "comedic_fun", "confidence": 0.99')).toEqual({
+      label: 'comedic_fun',
+      confidence: 0.99,
+    });
   });
 });

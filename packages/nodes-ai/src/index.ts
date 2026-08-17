@@ -3,19 +3,50 @@ import type { AgentTool, ModelRouter } from '@m2m/ai-core';
 import type { M2MNode, NodeExecutionContext, NodeMetadata, NodeRegistry } from '@m2m/node-sdk';
 import { M2MError } from '@m2m/shared';
 
-const providerProperty = { name: 'provider', displayName: 'Provider', type: 'select' as const, required: true, default: 'ollama', options: [
-  {label:'Ollama (local)',value:'ollama'},{label:'Google Gemini',value:'gemini'},{label:'OpenAI-compatible',value:'openai-compatible'},
+const providerProperty = { name: 'provider', displayName: 'Provider', type: 'select' as const, required: true, default: 'gemini', options: [
+  {label:'Google Gemini',value:'gemini'},{label:'OpenAI-compatible',value:'openai-compatible'},{label:'Ollama (local)',value:'ollama'},
 ] };
-const modelProperty = { name: 'model', displayName: 'Model', type: 'string' as const, required: true, default: 'llama3.2' };
+const modelProperty = { name: 'model', displayName: 'Model', type: 'string' as const, required: true, default: 'gemini-2.5-flash' };
+
+export function resolveTextParam(paramValue: unknown, input: unknown): string {
+  if (typeof paramValue === 'string' && paramValue.trim() && paramValue !== 'undefined' && paramValue !== 'null') {
+    return paramValue.trim();
+  }
+  if (typeof input === 'string') return input.trim();
+  if (input && typeof input === 'object') {
+    const rec = input as Record<string, unknown>;
+    if (typeof rec.text === 'string' && rec.text.trim()) return rec.text.trim();
+    if (typeof rec.content === 'string' && rec.content.trim()) return rec.content.trim();
+    if (typeof rec.prompt === 'string' && rec.prompt.trim()) return rec.prompt.trim();
+    if (typeof rec.result === 'string' && rec.result.trim()) return rec.result.trim();
+    if (typeof rec.description === 'string' && rec.description.trim()) return rec.description.trim();
+    if (typeof rec.message === 'string' && rec.message.trim()) return rec.message.trim();
+    if (typeof rec.json === 'string' && rec.json.trim()) return rec.json.trim();
+    if (rec.json && typeof rec.json === 'object') {
+      return resolveTextParam('', rec.json);
+    }
+    return JSON.stringify(input);
+  }
+  return '';
+}
 
 function modelInput(context: NodeExecutionContext) {
   const credential = Object.values(context.credentials)[0];
+  const providerId = String(context.node.parameters.provider ?? 'gemini');
+  let apiKey: string | undefined = credential?.data.apiKey;
+  if (!apiKey) {
+    if (providerId === 'gemini') apiKey = process.env.GEMINI_API_KEY;
+    else if (providerId === 'openai') apiKey = process.env.OPENAI_API_KEY;
+    else if (providerId === 'siliconflow') apiKey = process.env.SILICONFLOW_API_KEY;
+    else if (providerId === 'groq') apiKey = process.env.GROQ_API_KEY;
+    else if (providerId === 'deepseek') apiKey = process.env.DEEPSEEK_API_KEY;
+  }
   return {
-    model: String(context.node.parameters.model),
-    providerId: String(context.node.parameters.provider ?? 'ollama'),
+    model: String(context.node.parameters.model || (providerId === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini')),
+    providerId,
     temperature: Number(context.node.parameters.temperature ?? 0.2),
-    maxTokens: Number(context.node.parameters.maxTokens ?? 1024),
-    apiKey: credential?.data.apiKey,
+    maxTokens: Number(context.node.parameters.maxTokens ?? 2048),
+    apiKey,
     baseUrl: credential?.data.baseUrl,
   };
 }
@@ -38,8 +69,9 @@ class AIPromptNode implements M2MNode {
   async execute(context: NodeExecutionContext) {
     const { node } = context;
     const config = modelInput(context);
+    const promptValue = resolveTextParam(node.parameters.prompt, context.input);
     const result = await this.router.get(config.providerId).generateText({
-      model: config.model, prompt: String(node.parameters.prompt),
+      model: config.model, prompt: promptValue,
       system: node.parameters.system ? String(node.parameters.system) : undefined,
       temperature: config.temperature, maxTokens: config.maxTokens,
       apiKey: config.apiKey, baseUrl: config.baseUrl,
@@ -205,13 +237,24 @@ class StructuredOutputNode implements M2MNode{
   readonly metadata:NodeMetadata={type:this.type,version:1,displayName:'Structured Output',category:'ai',icon:'braces',inputs:1,outputs:1,properties:[
     providerProperty,modelProperty,{name:'prompt',displayName:'Prompt',type:'string',required:true,default:'Convert the input into the requested JSON structure.'},
     {name:'schema',displayName:'JSON Schema',type:'json',required:true,default:{type:'object',properties:{result:{type:'string'}},required:['result']}},
-    {name:'temperature',displayName:'Temperature',type:'number',default:0},{name:'maxTokens',displayName:'Max Tokens',type:'number',default:1024},
+    {name:'temperature',displayName:'Temperature',type:'number',default:0},{name:'maxTokens',displayName:'Max Tokens',type:'number',default:2048},
   ]};
   constructor(private readonly router:ModelRouter){}
-  async execute(context:NodeExecutionContext){const config=modelInput(context);const schema=context.node.parameters.schema;const result=await this.router.get(config.providerId).generateStructured({
-    model:config.model,prompt:`${String(context.node.parameters.prompt)}\n\nInput:\n${JSON.stringify(context.input)}\n\nJSON Schema:\n${JSON.stringify(schema)}`,
-    temperature:config.temperature,maxTokens:config.maxTokens,apiKey:config.apiKey,baseUrl:config.baseUrl,parse:(value)=>validateSchema(value,schema),
-  });return{json:result};}
+  async execute(context:NodeExecutionContext){
+    const config=modelInput(context);
+    const schema=context.node.parameters.schema;
+    const promptValue = resolveTextParam(context.node.parameters.prompt, context.input);
+    const result=await this.router.get(config.providerId).generateStructured({
+      model:config.model,
+      prompt:`${promptValue}\n\nInput Data:\n${JSON.stringify(context.input)}\n\nJSON Schema:\n${JSON.stringify(schema)}\n\nEnsure all required properties in the schema are present in the JSON response.`,
+      temperature:config.temperature,
+      maxTokens:config.maxTokens,
+      apiKey:config.apiKey,
+      baseUrl:config.baseUrl,
+      parse:(value)=>validateSchema(value,schema),
+    });
+    return{json:result};
+  }
 }
 
 class TextClassificationNode implements M2MNode{
@@ -221,7 +264,50 @@ class TextClassificationNode implements M2MNode{
     {name:'instructions',displayName:'Instructions',type:'string',default:'Choose exactly one label.'},
   ]};
   constructor(private readonly router:ModelRouter){}
-  async execute(context:NodeExecutionContext){const labels=Array.isArray(context.node.parameters.labels)?context.node.parameters.labels.map(String):[];if(labels.length<2)throw new M2MError('VALIDATION_ERROR','Text Classification requires at least two labels');const config=modelInput(context);const schema={type:'object',properties:{label:{type:'string',enum:labels},confidence:{type:'number'},reason:{type:'string'}},required:['label','confidence']};const result=await this.router.get(config.providerId).generateStructured({model:config.model,prompt:`${String(context.node.parameters.instructions)}\nLabels: ${labels.join(', ')}\nText: ${String(context.node.parameters.text)}`,temperature:0,maxTokens:512,apiKey:config.apiKey,baseUrl:config.baseUrl,parse:value=>validateSchema(value,schema)});return{json:result};}
+  async execute(context:NodeExecutionContext){
+    const labels=Array.isArray(context.node.parameters.labels)?context.node.parameters.labels.map(String):[];
+    if(labels.length<2)throw new M2MError('VALIDATION_ERROR','Text Classification requires at least two labels');
+    const config=modelInput(context);
+    const schema={type:'object',properties:{label:{type:'string',enum:labels},confidence:{type:'number'},reason:{type:'string'}},required:['label']};
+    const textToClassify = resolveTextParam(context.node.parameters.text, context.input);
+    const promptText = `Classify the following text into exactly ONE of the allowed labels:
+Labels: ${labels.join(', ')}
+
+Instructions: ${String(context.node.parameters.instructions || 'Choose exactly one label.')}
+
+Text to classify:
+${textToClassify}
+
+You MUST return a JSON object with this exact structure:
+{
+  "label": "<must be one of: ${labels.join(', ')}>",
+  "confidence": <number between 0.0 and 1.0>,
+  "reason": "<brief rationale>"
+}`;
+
+    const result=await this.router.get(config.providerId).generateStructured({
+      model:config.model,
+      prompt:promptText,
+      temperature:0,
+      maxTokens:config.maxTokens,
+      apiKey:config.apiKey,
+      baseUrl:config.baseUrl,
+      parse:(raw)=>{
+        const value = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : { label: String(raw) };
+        if (typeof value.confidence !== 'number' || Number.isNaN(value.confidence)) {
+          value.confidence = 1.0;
+        }
+        if (!value.reason || typeof value.reason !== 'string') {
+          value.reason = `Classified as ${String(value.label)}`;
+        }
+        const rawLabel = String(value.label ?? '').trim();
+        const matchedLabel = labels.find((l) => l.toLowerCase() === rawLabel.toLowerCase()) ?? labels[0];
+        value.label = matchedLabel;
+        return validateSchema(value, schema);
+      }
+    });
+    return{json:result};
+  }
 }
 
 class InformationExtractionNode implements M2MNode{
@@ -231,7 +317,24 @@ class InformationExtractionNode implements M2MNode{
     {name:'fields',displayName:'Fields',type:'json',required:true,default:[{name:'name',type:'string',description:'Person or organization name'}]},
   ]};
   constructor(private readonly router:ModelRouter){}
-  async execute(context:NodeExecutionContext){const fields=Array.isArray(context.node.parameters.fields)?context.node.parameters.fields:[];const properties=Object.fromEntries(fields.map(item=>{const field=item as Record<string,unknown>;return[String(field.name),{type:String(field.type??'string'),description:field.description}];}));if(Object.keys(properties).length===0)throw new M2MError('VALIDATION_ERROR','Information Extraction requires fields');const schema={type:'object',properties};const config=modelInput(context);const result=await this.router.get(config.providerId).generateStructured({model:config.model,prompt:`Extract the requested fields from this text:\n${String(context.node.parameters.text)}\nSchema: ${JSON.stringify(schema)}`,temperature:0,maxTokens:1024,apiKey:config.apiKey,baseUrl:config.baseUrl,parse:value=>validateSchema(value,schema)});return{json:result};}
+  async execute(context:NodeExecutionContext){
+    const fields=Array.isArray(context.node.parameters.fields)?context.node.parameters.fields:[];
+    const properties=Object.fromEntries(fields.map(item=>{const field=item as Record<string,unknown>;return[String(field.name),{type:String(field.type??'string'),description:field.description}];}));
+    if(Object.keys(properties).length===0)throw new M2MError('VALIDATION_ERROR','Information Extraction requires fields');
+    const schema={type:'object',properties};
+    const config=modelInput(context);
+    const textToExtract = resolveTextParam(context.node.parameters.text, context.input);
+    const result=await this.router.get(config.providerId).generateStructured({
+      model:config.model,
+      prompt:`Extract the requested fields from this text into a JSON object conforming to the schema:\n${textToExtract}\n\nFields: ${Object.keys(properties).join(', ')}\nJSON Schema: ${JSON.stringify(schema)}`,
+      temperature:0,
+      maxTokens:config.maxTokens,
+      apiKey:config.apiKey,
+      baseUrl:config.baseUrl,
+      parse:value=>validateSchema(value,schema)
+    });
+    return{json:result};
+  }
 }
 
 class EmbeddingNode implements M2MNode{

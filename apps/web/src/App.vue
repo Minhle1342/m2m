@@ -15,6 +15,10 @@ function logout() {
   clearSession();
   void router.replace('/login');
 }
+
+function dismissToast() {
+  app.dismissToast();
+}
 </script>
 
 <template>
@@ -69,7 +73,16 @@ function logout() {
 
     <Transition name="toast">
       <div v-if="app.notice || app.error" class="toast" :class="{ danger: app.error }">
-        {{ app.error || app.notice }}
+        <span class="toast-text">{{ app.error || app.notice }}</span>
+        <button
+          class="toast-close-btn"
+          type="button"
+          :title="locale === 'en' ? 'Close notification' : 'Đóng thông báo'"
+          aria-label="Close"
+          @click.stop.prevent="dismissToast"
+        >
+          ✕
+        </button>
       </div>
     </Transition>
   </div>

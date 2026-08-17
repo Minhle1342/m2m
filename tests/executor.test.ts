@@ -36,4 +36,48 @@ describe('workflow executor',()=>{
     ],settings:{}}});
     expect(skipped).toContain('no');expect(result.merge?.json).toEqual({selected:true});
   });
+  it('executes a linear chain from start node to end node', async () => {
+    const registry = new NodeRegistry();
+    registry.register(trigger);
+    registry.register({
+      type: 'test.step1',
+      version: 1,
+      metadata: { type: 'test.step1', version: 1, displayName: 'Step1', category: 'core', inputs: 1, outputs: 1, properties: [] },
+      execute: async ({ input }) => ({ json: { count: (input as any)?.count + 1 } })
+    });
+    registry.register({
+      type: 'test.step2',
+      version: 1,
+      metadata: { type: 'test.step2', version: 1, displayName: 'Step2', category: 'core', inputs: 1, outputs: 1, properties: [] },
+      execute: async ({ input }) => ({ json: { count: (input as any)?.count + 10 } })
+    });
+
+    const events: ExecutionEvent[] = [];
+    const records: NodeLifecycleRecord[] = [];
+    const result = await executeWorkflow({
+      executionId: 'e4',
+      workflowId: 'w4',
+      registry,
+      triggerData: { count: 0 },
+      hooks: hooks(events, records),
+      definition: {
+        nodes: [
+          { id: 't', type: 'test.trigger', name: 'Trigger', position: { x: 0, y: 0 }, parameters: {} },
+          { id: 's1', type: 'test.step1', name: 'Step 1', position: { x: 1, y: 0 }, parameters: {} },
+          { id: 's2', type: 'test.step2', name: 'Step 2', position: { x: 2, y: 0 }, parameters: {} }
+        ],
+        edges: [
+          { id: 'e1', source: 't', target: 's1' },
+          { id: 'e2', source: 's1', target: 's2' }
+        ],
+        settings: {}
+      }
+    });
+
+    expect(result.t.json).toEqual({ count: 0 });
+    expect(result.s1.json).toEqual({ count: 1 });
+    expect(result.s2.json).toEqual({ count: 11 });
+    expect(records.map((r) => r.node.id)).toEqual(['t', 's1', 's2']);
+  });
 });
+

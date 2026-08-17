@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **m2m** (2101 symbols, 4297 relationships, 180 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **m2m---AI-Workflow-Automation-Platform** (2273 symbols, 4755 relationships, 195 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
@@ -25,10 +25,10 @@ This project is indexed by GitNexus as **m2m** (2101 symbols, 4297 relationships
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/m2m/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/m2m/clusters` | All functional areas |
-| `gitnexus://repo/m2m/processes` | All execution flows |
-| `gitnexus://repo/m2m/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/m2m---AI-Workflow-Automation-Platform/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/m2m---AI-Workflow-Automation-Platform/clusters` | All functional areas |
+| `gitnexus://repo/m2m---AI-Workflow-Automation-Platform/processes` | All execution flows |
+| `gitnexus://repo/m2m---AI-Workflow-Automation-Platform/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 

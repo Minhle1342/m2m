@@ -64,29 +64,29 @@ const SF_VIDEO_MODELS: Record<string, string> = {
   'siliconflow-wan2.2-i2v': 'Wan-AI/Wan2.2-I2V-A14B',
   'Wan-AI/Wan2.2-I2V-A14B': 'Wan-AI/Wan2.2-I2V-A14B',
 
-  'siliconflow-wan2.1-i2v': 'Wan-AI/Wan2.1-I2V-14B-720P',
-  'wan2.1-i2v': 'Wan-AI/Wan2.1-I2V-14B-720P',
-  'Wan-AI/Wan2.1-I2V-14B-720P': 'Wan-AI/Wan2.1-I2V-14B-720P',
+  'siliconflow-wan2.1-i2v': 'Wan-AI/Wan2.2-I2V-A14B',
+  'wan2.1-i2v': 'Wan-AI/Wan2.2-I2V-A14B',
+  'Wan-AI/Wan2.1-I2V-14B-720P': 'Wan-AI/Wan2.2-I2V-A14B',
 
-  'siliconflow-wan2.1-i2v-turbo': 'Wan-AI/Wan2.1-I2V-14B-720P-Turbo',
-  'Wan-AI/Wan2.1-I2V-14B-720P-Turbo': 'Wan-AI/Wan2.1-I2V-14B-720P-Turbo',
+  'siliconflow-wan2.1-i2v-turbo': 'Wan-AI/Wan2.2-I2V-A14B',
+  'Wan-AI/Wan2.1-I2V-14B-720P-Turbo': 'Wan-AI/Wan2.2-I2V-A14B',
 
   'siliconflow-wan2.2-t2v': 'Wan-AI/Wan2.2-T2V-A14B',
   'Wan-AI/Wan2.2-T2V-A14B': 'Wan-AI/Wan2.2-T2V-A14B',
 
-  'siliconflow-wan2.1-t2v': 'Wan-AI/Wan2.1-T2V-14B-720P',
-  'Wan-AI/Wan2.1-T2V-14B-720P': 'Wan-AI/Wan2.1-T2V-14B-720P',
+  'siliconflow-wan2.1-t2v': 'Wan-AI/Wan2.2-T2V-A14B',
+  'Wan-AI/Wan2.1-T2V-14B-720P': 'Wan-AI/Wan2.2-T2V-A14B',
 
-  'siliconflow-cogvideox': 'THUDM/CogVideoX-5b',
-  'cogvideox': 'THUDM/CogVideoX-5b',
-  'cogvideox-5b': 'THUDM/CogVideoX-5b',
-  'THUDM/CogVideoX-5b': 'THUDM/CogVideoX-5b',
+  'siliconflow-cogvideox': 'Wan-AI/Wan2.2-I2V-A14B',
+  'cogvideox': 'Wan-AI/Wan2.2-I2V-A14B',
+  'cogvideox-5b': 'Wan-AI/Wan2.2-I2V-A14B',
+  'THUDM/CogVideoX-5b': 'Wan-AI/Wan2.2-I2V-A14B',
 
-  'siliconflow-hunyuan': 'tencent/HunyuanVideo',
-  'hunyuan': 'tencent/HunyuanVideo',
-  'tencent/HunyuanVideo': 'tencent/HunyuanVideo',
+  'siliconflow-hunyuan': 'Wan-AI/Wan2.2-I2V-A14B',
+  'hunyuan': 'Wan-AI/Wan2.2-I2V-A14B',
+  'tencent/HunyuanVideo': 'Wan-AI/Wan2.2-I2V-A14B',
 
-  // Fallbacks
+  // Default video model on SiliconCloud (Wan 2.2 is the active supported model)
   'wan2.2-ti2v-5b': 'Wan-AI/Wan2.2-I2V-A14B',
   'default': 'Wan-AI/Wan2.2-I2V-A14B'
 };
@@ -349,14 +349,29 @@ export class SiliconFlowMediaProvider implements MediaProviderAdapter {
       }
     }
 
+    let imageSize = '1280x720';
+    if (typeof request.inputImage === 'object' && request.inputImage?.width && request.inputImage?.height) {
+      const w = request.inputImage.width;
+      const h = request.inputImage.height;
+      if (Math.abs(w - h) < 120) {
+        imageSize = '960x960';
+      } else if (h > w) {
+        imageSize = '720x1280';
+      } else {
+        imageSize = '1280x720';
+      }
+    }
+
     const submitBody: Record<string, unknown> = {
       model: modelName,
       prompt: request.prompt,
-      seed: request.seed
+      image_size: imageSize
     };
     if (imageUrl) submitBody.image = imageUrl;
+    if (request.negativePrompt) submitBody.negative_prompt = request.negativePrompt;
+    if (request.seed) submitBody.seed = request.seed;
 
-    const { res: submitRes, baseUrl: activeBaseUrl } = await this.fetchWithFallback(
+    let { res: submitRes, baseUrl: activeBaseUrl } = await this.fetchWithFallback(
       '/video/submit',
       {
         method: 'POST',
@@ -370,9 +385,50 @@ export class SiliconFlowMediaProvider implements MediaProviderAdapter {
       credential
     );
 
+    // Auto-fallback if model is disabled (30003) or missing (20012)
+    if (!submitRes.ok && (submitRes.status === 403 || submitRes.status === 400)) {
+      const errClone = submitRes.clone();
+      try {
+        const errJson = (await errClone.json()) as { code?: number; message?: string };
+        if ((errJson?.code === 30003 || errJson?.code === 20012) && modelName !== 'Wan-AI/Wan2.1-I2V-14B-720P') {
+          submitBody.model = 'Wan-AI/Wan2.1-I2V-14B-720P';
+          const retryRes = await this.fetchWithFallback(
+            '/video/submit',
+            {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                Authorization: `Bearer ${apiKey}`
+              },
+              body: JSON.stringify(submitBody),
+              signal: AbortSignal.timeout(60_000)
+            },
+            credential
+          );
+          if (retryRes.res.ok) {
+            submitRes = retryRes.res;
+            activeBaseUrl = retryRes.baseUrl;
+          }
+        }
+      } catch {
+        // ignore JSON parse error
+      }
+    }
+
     if (!submitRes.ok) {
       const errText = await submitRes.text();
-      throw new M2MError('MEDIA_GENERATION_FAILED', `SiliconFlow Video Submit Error (${submitRes.status}): ${errText}`, false);
+      let detailedMessage = `SiliconFlow Video Submit Error (${submitRes.status}): ${errText}`;
+      try {
+        const errJson = JSON.parse(errText) as { code?: number; message?: string };
+        if (errJson?.code === 30001) {
+          detailedMessage = 'Tài khoản SiliconCloud của bạn chưa đủ số dư để tạo Video (Wan2.2-I2V có chi phí ~$0.29/video trên SiliconFlow). Bạn có thể nạp tiền tại cloud.siliconflow.com hoặc chuyển sang Provider Zhipu AI (CogVideoX-Flash) / ComfyUI Local để tạo video miễn phí.';
+        } else if (errJson?.code === 30003) {
+          detailedMessage = `Mô hình video "${modelName}" đang bị tạm ngưng trên SiliconFlow. Bạn có thể đổi sang nhà cung cấp Zhipu AI hoặc ComfyUI Local.`;
+        }
+      } catch {
+        // use default detailedMessage
+      }
+      throw new M2MError('MEDIA_GENERATION_FAILED', detailedMessage, false);
     }
 
     const submitData = (await submitRes.json()) as { requestId: string };

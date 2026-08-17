@@ -43,6 +43,34 @@ export function createWorkflowProcessor(db: M2MDataSource, events: ExecutionEven
     execution.error = null;
     await executionRepo.save(execution);
 
+    const triggerData = (execution.triggerData ?? {}) as Record<string, unknown>;
+    const explicitStartNodeId =
+      typeof triggerData === 'object' && triggerData !== null && 'startNodeId' in triggerData
+        ? String(triggerData.startNodeId)
+        : undefined;
+
+    const initialResults: Record<string, any> = {
+      ...(typeof triggerData?.initialResults === 'object' && triggerData.initialResults !== null
+        ? (triggerData.initialResults as Record<string, any>)
+        : {})
+    };
+
+    if (explicitStartNodeId) {
+      const nodeExecRepo = db.getRepository(NodeExecutionEntity);
+      for (const n of version.definition.nodes) {
+        if (n.id === explicitStartNodeId) continue;
+        if (!initialResults[n.id]) {
+          const latestSuccess = await nodeExecRepo.findOne({
+            where: { nodeId: n.id, status: 'success' },
+            order: { finishedAt: 'DESC' }
+          });
+          if (latestSuccess?.output) {
+            initialResults[n.id] = latestSuccess.output;
+          }
+        }
+      }
+    }
+
     try {
       const output = await executeWorkflow({
         executionId: execution.id,
@@ -50,6 +78,8 @@ export function createWorkflowProcessor(db: M2MDataSource, events: ExecutionEven
         definition: version.definition,
         triggerData: execution.triggerData,
         registry,
+        startNodeId: explicitStartNodeId,
+        initialResults,
         hooks: {
           publish: (event) => events.publish(event),
           isCancelled: async () => (await executionRepo.findOneBy({ id: execution.id }))?.status === 'cancelled',

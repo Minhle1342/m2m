@@ -162,7 +162,8 @@ export async function processWorkflowAssistant(req: AssistantRequest): Promise<A
     availableCredentials: req.availableCredentials,
     providerStatuses: req.providerStatuses,
     allowReplaceWorkflow: req.workflow.nodes.length === 0
-      || /(?:rebuild|replace|recreate|from scratch|làm lại|tạo lại|xây dựng lại|thay toàn bộ|xóa toàn bộ).{0,24}(?:workflow|quy trình)|(?:workflow|quy trình).{0,24}(?:from scratch|từ đầu|toàn bộ)/i.test(req.prompt)
+      || (req.workflow.nodes.length === 1 && req.workflow.nodes[0].type === 'trigger.manual')
+      || /(?:create|build|generate|rebuild|replace|recreate|from scratch|tạo mới|tạo|làm lại|tạo lại|xây dựng lại|xây dựng|thay toàn bộ|xóa toàn bộ).{0,24}(?:workflow|quy trình)|(?:workflow|quy trình).{0,24}(?:from scratch|từ đầu|toàn bộ)/i.test(req.prompt)
   });
 
   return {

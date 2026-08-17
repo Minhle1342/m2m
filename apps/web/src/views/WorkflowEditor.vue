@@ -194,10 +194,14 @@ function applyPendingAiResult() {
   window.clearTimeout(aiExplanationTimer.value);
   aiExplanationTimer.value = window.setTimeout(() => {
     aiExplanation.value = '';
-  }, 9000);
+  }, 5000);
 }
 
 function discardPendingAiResult() {
+  if (aiExplanationTimer.value) {
+    window.clearTimeout(aiExplanationTimer.value);
+    aiExplanationTimer.value = undefined;
+  }
   pendingAiResult.value = null;
   aiExplanation.value = '';
 }
@@ -234,9 +238,9 @@ const otherCredentials = computed(() => {
 
 const modelSuggestions = computed(() => {
   if (!selected.value) return [];
-  const provider = String(selected.value.data.parameters?.provider || 'ollama');
+  const provider = String(selected.value.data.parameters?.provider || 'gemini');
   if (provider === 'gemini') {
-    return ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    return ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
   }
   if (provider === 'openai-compatible') {
     return ['gpt-4o', 'gpt-4o-mini', 'deepseek-chat', 'deepseek-reasoner', 'llama-3.3-70b-versatile'];
@@ -250,49 +254,50 @@ const modelSuggestions = computed(() => {
 function getPropertyOptions(property: { name: string; options?: Array<{ label: string; value: unknown }> }) {
   if (property.name === 'model' && selected.value?.data.nodeType === 'm2m.media.generateImage') {
     const provider = String(selected.value.data.parameters?.provider || 'comfyui');
-    if (provider === 'comfyui') {
-      return property.options?.filter((o) => ['flux2-klein-4b', 'sdxl'].includes(String(o.value))) || property.options;
+    const validModels: Record<string, string[]> = {
+      comfyui: ['flux2-klein-4b', 'sdxl'],
+      siliconflow: [
+        'siliconflow-flux-schnell',
+        'siliconflow-flux-dev',
+        'siliconflow-qwen-image',
+        'siliconflow-z-image',
+        'siliconflow-kolors',
+        'siliconflow-sd3.5',
+        'siliconflow-sdxl'
+      ],
+      zhipu: ['zhipu-cogview-3-plus', 'zhipu-cogview-4'],
+      dashscope: ['dashscope-wanx2.1-turbo'],
+      cloudflare: ['cf-flux-schnell', 'cf-sdxl-lightning'],
+      pollinations: ['pollinations-flux'],
+      huggingface: ['hf-flux-schnell'],
+      'black-forest-labs': ['bfl-flux-pro-1.1', 'bfl-flux-dev']
+    };
+    if (validModels[provider]) {
+      const filtered = property.options?.filter((o) => validModels[provider].includes(String(o.value)));
+      if (filtered && filtered.length > 0) return filtered;
     }
-    if (provider === 'siliconflow') {
-      return property.options?.filter((o) => ['siliconflow-kolors', 'siliconflow-sd3.5', 'siliconflow-sdxl'].includes(String(o.value))) || property.options;
-    }
-    if (provider === 'zhipu') {
-      return property.options?.filter((o) => ['zhipu-cogview-3-plus', 'zhipu-cogview-4'].includes(String(o.value))) || property.options;
-    }
-    if (provider === 'dashscope') {
-      return property.options?.filter((o) => ['dashscope-wanx2.1-turbo'].includes(String(o.value))) || property.options;
-    }
-    if (provider === 'cloudflare') {
-      return property.options?.filter((o) => ['cf-flux-schnell', 'cf-sdxl-lightning'].includes(String(o.value))) || property.options;
-    }
-    if (provider === 'pollinations') {
-      return property.options?.filter((o) => ['pollinations-flux'].includes(String(o.value))) || property.options;
-    }
-    if (provider === 'huggingface') {
-      return property.options?.filter((o) => ['hf-flux-schnell'].includes(String(o.value))) || property.options;
-    }
-    if (provider === 'black-forest-labs') {
-      return property.options?.filter((o) => ['bfl-flux-pro-1.1', 'bfl-flux-dev'].includes(String(o.value))) || property.options;
-    }
+    return property.options;
   }
 
   if (property.name === 'model' && selected.value?.data.nodeType === 'm2m.media.imageToVideo') {
     const provider = String(selected.value.data.parameters?.provider || 'comfyui');
-    if (provider === 'comfyui') {
-      return property.options?.filter((o) => ['wan2.2-ti2v-5b', 'wan2.1-i2v', 'cogvideox-i2v', 'ltx-video', 'hunyuan-video-i2v'].includes(String(o.value))) || property.options;
+    const validModels: Record<string, string[]> = {
+      comfyui: ['wan2.2-ti2v-5b', 'wan2.1-i2v', 'cogvideox-i2v', 'ltx-video', 'hunyuan-video-i2v'],
+      siliconflow: [
+        'siliconflow-wan2.2-i2v',
+        'siliconflow-wan2.1-i2v',
+        'siliconflow-wan2.1-i2v-turbo',
+        'siliconflow-cogvideox'
+      ],
+      zhipu: ['zhipu-cogvideox-flash', 'zhipu-cogvideox'],
+      dashscope: ['dashscope-wanx2.1-i2v'],
+      huggingface: ['hf-ltx-video-i2v']
+    };
+    if (validModels[provider]) {
+      const filtered = property.options?.filter((o) => validModels[provider].includes(String(o.value)));
+      if (filtered && filtered.length > 0) return filtered;
     }
-    if (provider === 'siliconflow') {
-      return property.options?.filter((o) => ['siliconflow-wan2.1-i2v', 'siliconflow-cogvideox'].includes(String(o.value))) || property.options;
-    }
-    if (provider === 'zhipu') {
-      return property.options?.filter((o) => ['zhipu-cogvideox-flash'].includes(String(o.value))) || property.options;
-    }
-    if (provider === 'dashscope') {
-      return property.options?.filter((o) => ['dashscope-wanx2.1-i2v'].includes(String(o.value))) || property.options;
-    }
-    if (provider === 'huggingface') {
-      return property.options?.filter((o) => ['hf-ltx-video-i2v'].includes(String(o.value))) || property.options;
-    }
+    return property.options;
   }
   return property.options;
 }
@@ -349,21 +354,40 @@ function toDefinition(): WorkflowDefinition {
   };
 }
 function fromWorkflow(value: Workflow) {
-  nodes.value = value.definition.nodes.map((node) => ({
-    id: node.id,
-    type: 'm2m',
-    position: node.position,
-    data: {
-      name: node.name,
-      nodeType: node.type,
-      parameters: node.parameters,
-      credentials: node.credentials,
-      disabled: node.disabled,
-      retry: node.retry,
-      timeoutMs: node.timeoutMs,
-      metadata: nodeTypes.value.find((type) => type.type === node.type),
-    },
-  }));
+  nodes.value = value.definition.nodes.map((node) => {
+    const meta = nodeTypes.value.find((type) => type.type === node.type);
+    const params = { ...(node.parameters ?? {}) };
+    if (meta?.category === 'ai') {
+      if (!params.provider) params.provider = 'gemini';
+      if (!params.model) {
+        params.model = params.provider === 'gemini' ? 'gemini-2.5-flash' : params.provider === 'ollama' ? 'llama3.2' : 'gpt-4o-mini';
+      }
+    } else if (meta?.category === 'media') {
+      if (!params.provider) params.provider = 'comfyui';
+      if (!params.model) {
+        if (node.type === 'm2m.media.generateImage') {
+          params.model = params.provider === 'comfyui' ? 'flux2-klein-4b' : params.provider === 'siliconflow' ? 'siliconflow-flux-schnell' : 'pollinations-flux';
+        } else if (node.type === 'm2m.media.imageToVideo') {
+          params.model = params.provider === 'comfyui' ? 'wan2.2-ti2v-5b' : params.provider === 'siliconflow' ? 'siliconflow-wan2.2-i2v' : 'zhipu-cogvideox-flash';
+        }
+      }
+    }
+    return {
+      id: node.id,
+      type: 'm2m',
+      position: node.position,
+      data: {
+        name: node.name,
+        nodeType: node.type,
+        parameters: params,
+        credentials: node.credentials,
+        disabled: node.disabled,
+        retry: node.retry,
+        timeoutMs: node.timeoutMs,
+        metadata: meta,
+      },
+    };
+  });
   edges.value = value.definition.edges.map((edge) => ({ ...edge, type: 'default' }));
 }
 
@@ -394,6 +418,11 @@ function onMediaAction(e: Event) {
   const node = nodes.value.find((n) => n.id === custom.detail.nodeId);
   const media = custom.detail.media || node?.data.media;
 
+  if (custom.detail.action === 'run-from-node' && node) {
+    void runFromNode(node.id);
+    return;
+  }
+
   if (custom.detail.action === 'upload' && node && custom.detail.file) {
     void uploadImageToNode(node, custom.detail.file);
     return;
@@ -418,6 +447,160 @@ function onMediaAction(e: Event) {
     deleteConfirmMedia.value = { node, media };
   } else if (custom.detail.action === 'regenerate') {
     run();
+  }
+}
+
+function isDownstreamNode(startId: string, targetId: string): boolean {
+  if (startId === targetId) return true;
+  const visited = new Set<string>();
+  const queue = [startId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    const outbound = edges.value.filter((e) => e.source === current);
+    for (const edge of outbound) {
+      if (edge.target === targetId) return true;
+      queue.push(edge.target);
+    }
+  }
+  return false;
+}
+
+function getUpstreamAncestors(targetId: string): EditorNode[] {
+  const visited = new Set<string>();
+  const queue = [targetId];
+  const ancestors: EditorNode[] = [];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const incomingEdges = edges.value.filter((e) => e.target === current);
+    for (const edge of incomingEdges) {
+      if (!visited.has(edge.source)) {
+        visited.add(edge.source);
+        queue.push(edge.source);
+        const node = nodes.value.find((n) => n.id === edge.source);
+        if (node) ancestors.push(node);
+      }
+    }
+  }
+  return ancestors;
+}
+
+async function runFromNode(nodeId: string) {
+  const current = workflow.value;
+  if (!current) return;
+  try {
+    const isValid = await validate(true);
+    if (!isValid) {
+      const topError = validationIssues.value[0];
+      const categoryTag =
+        topError?.category === 'trigger'
+          ? '🔴 [Lỗi Trigger] '
+          : topError?.category === 'node_config'
+          ? '🟡 [Lỗi Cấu hình] '
+          : topError?.category === 'topology'
+          ? '🟠 [Lỗi Sơ đồ] '
+          : topError?.category === 'edge'
+          ? '🟣 [Lỗi Dây nối] '
+          : topError?.category === 'expression'
+          ? '🔵 [Lỗi Biểu thức] '
+          : '⚠️ ';
+      const msg = isVi.value
+        ? topError?.messageVi || topError?.message || 'Không thể chạy: Quy trình có lỗi cần sửa'
+        : topError?.message || 'Cannot run: Workflow has validation errors';
+      app.fail(new Error(`${categoryTag}${msg}`));
+      if (topError?.nodeId) selectedId.value = topError.nodeId;
+      return;
+    }
+
+    await save(true);
+
+    const targetNode = nodes.value.find((n) => n.id === nodeId);
+    const nodeDisplayName = targetNode?.data.name || nodeId;
+
+    // Collect upstream ancestors and their media/outputs from the canvas
+    const ancestors = getUpstreamAncestors(nodeId);
+    const initialResults: Record<string, unknown> = {};
+    let latestAncestorMedia: MediaFile | undefined = undefined;
+
+    // Direct parents take precedence
+    const directParents = edges.value
+      .filter((e) => e.target === nodeId)
+      .map((e) => nodes.value.find((n) => n.id === e.source))
+      .filter(Boolean) as EditorNode[];
+
+    for (const p of directParents) {
+      if (p.data.media && !p.data.mediaDeleted) {
+        latestAncestorMedia = p.data.media;
+        initialResults[p.id] = {
+          json: {
+            media: p.data.media,
+            image: p.data.media,
+            images: [p.data.media]
+          }
+        };
+      }
+    }
+
+    for (const anc of ancestors) {
+      if (anc.data.media && !anc.data.mediaDeleted) {
+        if (!latestAncestorMedia) latestAncestorMedia = anc.data.media;
+        if (!initialResults[anc.id]) {
+          initialResults[anc.id] = {
+            json: {
+              media: anc.data.media,
+              image: anc.data.media,
+              images: [anc.data.media]
+            }
+          };
+        }
+      }
+    }
+
+    // Check if target is a media consumer (like ImageToVideo or EditImage) without input image
+    if (
+      (targetNode?.data.nodeType === 'm2m.media.imageToVideo' || targetNode?.data.nodeType === 'm2m.media.editImage') &&
+      !targetNode.data.parameters?.image &&
+      !latestAncestorMedia
+    ) {
+      const msg = isVi.value
+        ? 'Bước này cần có ảnh đầu vào. Hãy chạy bước Tạo ảnh trước đó trong quy trình.'
+        : 'This node requires an input image. Please run the upstream image generation node first.';
+      app.fail(new Error(`⚠️ ${msg}`));
+      selectedId.value = nodeId;
+      return;
+    }
+
+    // Clear statuses of this node and all downstream nodes
+    nodes.value.forEach((node) => {
+      if (isDownstreamNode(nodeId, node.id)) {
+        node.data.status = undefined;
+      }
+    });
+
+    const payload: Record<string, unknown> = {
+      startNodeId: nodeId,
+      initialResults
+    };
+    if (latestAncestorMedia) {
+      payload.media = latestAncestorMedia;
+      payload.image = latestAncestorMedia;
+    }
+
+    const execution = await api<Execution>(
+      `/workflows/${current.id}/run`,
+      json('POST', payload)
+    );
+    executionId.value = execution.id;
+    listenExecution(execution.id);
+    app.notify(
+      isVi.value
+        ? `▶ Bắt đầu chạy từ bước: "${nodeDisplayName}" đến kết thúc`
+        : `▶ Running workflow starting from "${nodeDisplayName}" to end`
+    );
+  } catch (e: any) {
+    app.fail(e);
   }
 }
 
@@ -565,6 +748,16 @@ function addNode(
       .filter((p) => p.default !== undefined)
       .map((p) => [p.name, cloneValue(p.default)]),
   );
+  if (type.category === 'ai') {
+    if (!parameters.provider) parameters.provider = 'gemini';
+    if (!parameters.model) parameters.model = 'gemini-2.5-flash';
+  } else if (type.category === 'media') {
+    if (!parameters.provider) parameters.provider = 'comfyui';
+    if (!parameters.model) {
+      if (type.type === 'm2m.media.generateImage') parameters.model = 'flux2-klein-4b';
+      else if (type.type === 'm2m.media.imageToVideo') parameters.model = 'wan2.2-ti2v-5b';
+    }
+  }
   const id = `${type.type.replace(/\W/g, '-')}-${crypto.randomUUID().slice(0, 8)}`;
   nodes.value.push({
     id,
@@ -596,6 +789,26 @@ function connect(connection: Connection) {
 }
 function choose(event: NodeMouseEvent) {
   selectedId.value = event.node.id;
+  if (selected.value) {
+    const data = selected.value.data;
+    if (!data.parameters) data.parameters = {};
+    const meta = selectedMeta.value;
+    if (meta?.category === 'ai') {
+      if (!data.parameters.provider) data.parameters.provider = 'gemini';
+      if (!data.parameters.model) {
+        data.parameters.model = data.parameters.provider === 'gemini' ? 'gemini-2.5-flash' : data.parameters.provider === 'ollama' ? 'llama3.2' : 'gpt-4o-mini';
+      }
+    } else if (meta?.category === 'media') {
+      if (!data.parameters.provider) data.parameters.provider = 'comfyui';
+      if (!data.parameters.model) {
+        if (data.nodeType === 'm2m.media.generateImage') {
+          data.parameters.model = data.parameters.provider === 'comfyui' ? 'flux2-klein-4b' : data.parameters.provider === 'siliconflow' ? 'siliconflow-flux-schnell' : 'pollinations-flux';
+        } else if (data.nodeType === 'm2m.media.imageToVideo') {
+          data.parameters.model = data.parameters.provider === 'comfyui' ? 'wan2.2-ti2v-5b' : data.parameters.provider === 'siliconflow' ? 'siliconflow-wan2.2-i2v' : 'zhipu-cogvideox-flash';
+        }
+      }
+    }
+  }
 }
 function duplicate() {
   if (!selected.value) return;
@@ -625,7 +838,7 @@ function setParameter(name: string, value: unknown) {
       if (value === 'comfyui') {
         selected.value.data.parameters.model = 'flux2-klein-4b';
       } else if (value === 'siliconflow') {
-        selected.value.data.parameters.model = 'siliconflow-kolors';
+        selected.value.data.parameters.model = 'siliconflow-flux-schnell';
       } else if (value === 'zhipu') {
         selected.value.data.parameters.model = 'zhipu-cogview-3-plus';
       } else if (value === 'dashscope') {
@@ -643,7 +856,7 @@ function setParameter(name: string, value: unknown) {
       if (value === 'comfyui') {
         selected.value.data.parameters.model = 'wan2.2-ti2v-5b';
       } else if (value === 'siliconflow') {
-        selected.value.data.parameters.model = 'siliconflow-wan2.1-i2v';
+        selected.value.data.parameters.model = 'siliconflow-wan2.2-i2v';
       } else if (value === 'zhipu') {
         selected.value.data.parameters.model = 'zhipu-cogvideox-flash';
       } else if (value === 'dashscope') {
@@ -655,7 +868,7 @@ function setParameter(name: string, value: unknown) {
       if (value === 'ollama') {
         selected.value.data.parameters.model = 'llama3.2';
       } else if (value === 'gemini') {
-        selected.value.data.parameters.model = 'gemini-2.0-flash';
+        selected.value.data.parameters.model = 'gemini-2.5-flash';
       } else if (value === 'openai-compatible') {
         selected.value.data.parameters.model = 'gpt-4o-mini';
       }
@@ -747,12 +960,10 @@ function listenExecution(id: string) {
     const node = nodes.value.find((item) => item.id === payload.nodeId);
     if (node) {
       node.data.status = status;
-      if (payload.data?.output) {
-        const media = extractMediaFromOutput(payload.data.output);
-        if (media) {
-          node.data.media = media;
-          node.data.mediaDeleted = false;
-        }
+      const media = extractMediaFromOutput(payload.data?.output || payload.data);
+      if (media) {
+        node.data.media = media;
+        node.data.mediaDeleted = false;
       }
     }
   };
@@ -814,6 +1025,7 @@ async function run() {
       return;
     }
 
+    await save(true);
     nodes.value.forEach((node) => (node.data.status = undefined));
     const execution = await api<Execution>(`/workflows/${current.id}/run`, json('POST', {}));
     executionId.value = execution.id;
@@ -981,6 +1193,7 @@ onBeforeUnmount(() => {
           <RouterLink :to="`/executions/${executionId}`">
             {{ executionId.slice(0, 8) }} ↗
           </RouterLink>
+          <button class="chip-close-btn" type="button" :title="isVi ? 'Đóng' : 'Close'" @click="executionId = ''">✕</button>
         </div>
 
         <!-- Floating Canvas AI Assistant Bar (Bottom-Center) -->
@@ -1163,7 +1376,7 @@ onBeforeUnmount(() => {
               <span>{{ tPropName(property.name, property.displayName) }} <b v-if="property.required">*</b></span>
               <select
                 v-if="property.type === 'select'"
-                :value="selected.data.parameters[property.name]"
+                :value="selected.data.parameters[property.name] ?? property.default"
                 @change="setParameter(property.name, ($event.target as HTMLSelectElement).value)"
               >
                 <option
@@ -1177,13 +1390,13 @@ onBeforeUnmount(() => {
               <input
                 v-else-if="property.type === 'boolean'"
                 type="checkbox"
-                :checked="Boolean(selected.data.parameters[property.name])"
+                :checked="Boolean(selected.data.parameters[property.name] ?? property.default)"
                 @change="setParameter(property.name, ($event.target as HTMLInputElement).checked)"
               />
               <input
                 v-else-if="property.type === 'number'"
                 type="number"
-                :value="selected.data.parameters[property.name] as number"
+                :value="selected.data.parameters[property.name] ?? property.default"
                 @input="
                   setParameter(property.name, Number(($event.target as HTMLInputElement).value))
                 "
@@ -1196,19 +1409,19 @@ onBeforeUnmount(() => {
               />
               <textarea
                 v-else-if="['prompt', 'system', 'script', 'sceneDescription'].includes(property.name)"
-                :value="selected.data.parameters[property.name] as string"
+                :value="(selected.data.parameters[property.name] ?? property.default ?? '') as string"
                 rows="5"
                 @input="setParameter(property.name, ($event.target as HTMLTextAreaElement).value)"
               />
               <input
                 v-else-if="property.name === 'model' && modelSuggestions.length"
-                :value="selected.data.parameters[property.name] as string"
+                :value="(selected.data.parameters[property.name] ?? (selected.data.parameters?.provider === 'gemini' ? 'gemini-2.5-flash' : selected.data.parameters?.provider === 'openai-compatible' ? 'gpt-4o-mini' : property.default) ?? '') as string"
                 list="ai-model-datalist"
                 @input="setParameter(property.name, ($event.target as HTMLInputElement).value)"
               />
               <input
                 v-else
-                :value="selected.data.parameters[property.name] as string"
+                :value="(selected.data.parameters[property.name] ?? property.default ?? '') as string"
                 @input="setParameter(property.name, ($event.target as HTMLInputElement).value)"
               />
               <small>{{ property.description }}</small>
