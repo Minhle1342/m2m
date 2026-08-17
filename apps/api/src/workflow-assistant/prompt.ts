@@ -53,7 +53,40 @@ e. DATA EXTRACTION, MAPPING & WEBHOOK INGESTION:
 f. CONVERSATIONAL AGENT WITH PERSISTENT SESSION MEMORY:
    - Trigger -> Simple Memory ('ai.simpleMemory' op 'get') -> AI Prompt / Agent ('ai.prompt') -> Simple Memory ('ai.simpleMemory' op 'append') -> Webhook Response ('core.respondWebhook').
 
-=== 4. SUGIYAMA TOPOLOGICAL CANVAS LAYOUT ===
+=== 4. CHARACTER IDENTITY & MULTI-SHOT CONTINUITY PROTOCOL ===
+This protocol is MANDATORY whenever the user asks for a film, short movie, storyboard, multi-scene video, recurring character, same face, or visual continuity.
+
+a. EXTERNALIZE IDENTITY; NEVER RELY ON MODEL MEMORY:
+   - Generative calls are stateless. Create exactly one canonical character anchor before any scene branches.
+   - The anchor prompt must define an immutable IDENTITY LOCK: age range, face shape, skin tone, eye color/shape, nose, lips, hairline/style/color, distinctive marks, body proportions, and canonical wardrobe.
+   - Copy the identity lock verbatim into every character-bearing image prompt. Scene prompts may change action, pose, camera, lighting, and environment, but must not silently mutate locked traits.
+   - A fixed seed is a reproducibility aid only. Never claim that seed alone preserves identity.
+
+b. REFERENCE-FIRST DAG CONSTRUCTION:
+   - Inspect the runtime catalog before planning. If a node exposes referenceImages, characterReference, characterImages, identityReference, sourceImage, or an equivalent reference input, bind the canonical character MediaFile to EVERY scene-frame generator.
+   - Never generate recurring-character scene frames as unrelated text-to-image calls. They must descend from the same canonical reference asset or from an approved prior frame.
+   - If the catalog has no dedicated character-reference input, use the same canonical image as the input to every Image-to-Video branch. Use Edit Image only when the face can remain outside the edit mask; do not use an unmasked full-frame edit as proof of identity preservation.
+   - Use explicit per-scene branches and array-index expressions such as {{ $node["Storyboard"].json.scenes[0].imagePrompt }}. 'core.forEach' only bounds a collection; it does not fan out downstream node executions.
+
+c. SHOT AND PROMPT DISCIPLINE:
+   - Image prompts define appearance and composition. Video prompts describe motion, camera, timing, expression, and the instruction to preserve the exact face, hair, wardrobe, and body proportions from the input frame.
+   - Prefer conservative motion for close facial shots; avoid simultaneous extreme camera, pose, wardrobe, lighting, and background changes.
+   - Connect each scene frame to its own Image-to-Video node. Preserve scene order before Merge Video and keep one model family, aspect ratio, FPS, and visual style across the film unless the user asks otherwise.
+   - Where start/end-frame or previous-final-frame inputs exist in the catalog, chain the previous shot's final frame into the next shot while retaining the canonical character reference.
+
+d. IDENTITY QA AND HONEST READINESS:
+   - If the catalog provides face/identity comparison, sample keyframes and reject/regenerate shots below the configured similarity threshold.
+   - If reference-aware generation or identity QA is unavailable, add a precise manualSteps entry describing the missing capability and required human review. Build the strongest supported best-effort DAG, but never say exact identity is guaranteed or mark the limitation as solved.
+   - In explanation, state the chosen identity anchor, how every scene inherits it, seed/model/style invariants, and any remaining unsupported continuity controls.
+
+e. REQUIRED REFERENCE TOPOLOGY:
+   - Character Anchor -> Scene Frame 1 -> Image-to-Video 1
+                      -> Scene Frame 2 -> Image-to-Video 2
+                      -> Scene Frame N -> Image-to-Video N
+   - All scene-video outputs -> ordered Merge Video -> Save Media.
+   - A topology with multiple independent character Generate Image roots is invalid for a continuity-sensitive request.
+
+=== 5. SUGIYAMA TOPOLOGICAL CANVAS LAYOUT ===
 - Place nodes in discrete sequential horizontal stages from left to right:
   * Stage 0 (Triggers): x: 80, y: 300
   * Stage 1 (Extractors / Splitters / LLM Prompts / Tools): x: 440 (vertically spaced at y: 120, y: 300, y: 480 if multiple)
@@ -61,7 +94,7 @@ f. CONVERSATIONAL AGENT WITH PERSISTENT SESSION MEMORY:
   * Stage 3 (Combiners / Video Encoders / Mergers): x: 1160
   * Stage 4 (Sinks / Exporters / Webhook Responders): x: 1520
 
-=== 5. OPERATING RULES & GUARDRAILS ===
+=== 6. OPERATING RULES & GUARDRAILS ===
 1. Use only node types, parameters, option values, handles, providers, and models from the runtime catalog supplied by the application.
 2. Prefer minimal update operations. Never replace the whole workflow unless the canvas is empty, contains only a default trigger, or the user explicitly asks to create/build/rebuild it.
 3. Universal Parameter & Resilience Auto-Configuration: Attach retry policies (3 attempts, 1000ms delay, exponential backoff) and timeouts (30s-180s) to AI, Media, and HTTP nodes.
@@ -118,6 +151,60 @@ function compactCatalog(req: AssistantRequest) {
   }));
 }
 
+const MULTI_SHOT_CONTINUITY_INTENT =
+  /(?:phim(?:\s+ngắn)?|bộ\s+phim|nhiều\s+(?:cảnh|phân\s+cảnh|khung\s+hình)|xuyên\s+cảnh|giữ\s+(?:nguyên\s+)?(?:khuôn\s+mặt|nhân\s+vật)|không\s+quên\s+(?:mặt|khuôn\s+mặt)|film|short\s+(?:film|movie)|movie|storyboard|multi[-\s]?(?:scene|shot)|cross[-\s]scene|same\s+(?:face|character)|character\s+consisten|identity\s+consisten|recurring\s+character)/i;
+
+const MULTI_SCENE_VIDEO_INTENT =
+  /(?:phim(?:\s+ngắn)?|bộ\s+phim|nhiều\s+(?:cảnh|phân\s+cảnh)|xuyên\s+cảnh|film|short\s+(?:film|movie)|movie|storyboard|multi[-\s]?(?:scene|shot)|cross[-\s]scene)/i;
+
+const CHARACTER_REFERENCE_PROPERTY_NAMES = new Set([
+  'referenceImages',
+  'characterReference',
+  'characterReferences',
+  'characterImages',
+  'identityReference',
+  'identityReferences'
+]);
+
+export function requiresCharacterContinuity(req: Pick<AssistantRequest, 'prompt' | 'workflow'>): boolean {
+  const currentVideoNodes = req.workflow.nodes.filter((node) => node.type === 'm2m.media.imageToVideo');
+  const hasStoryboard = req.workflow.nodes.some((node) => node.type === 'm2m.media.storyboardSplitter');
+  return MULTI_SHOT_CONTINUITY_INTENT.test(req.prompt) || hasStoryboard || currentVideoNodes.length > 1;
+}
+
+export function requiresMultiSceneVideo(req: Pick<AssistantRequest, 'prompt' | 'workflow'>): boolean {
+  return MULTI_SCENE_VIDEO_INTENT.test(req.prompt)
+    || req.workflow.nodes.some((node) => node.type === 'm2m.media.storyboardSplitter')
+    || req.workflow.nodes.filter((node) => node.type === 'm2m.media.imageToVideo').length > 1;
+}
+
+export function listCharacterReferenceNodeTypes(nodeTypes: AssistantRequest['nodeTypes']): string[] {
+  return (nodeTypes ?? [])
+    .filter((nodeType) => (nodeType.properties ?? []).some((property) => CHARACTER_REFERENCE_PROPERTY_NAMES.has(property.name)))
+    .map((nodeType) => nodeType.type);
+}
+
+function buildCharacterContinuityDirective(req: AssistantRequest): string | undefined {
+  if (!requiresCharacterContinuity(req)) return undefined;
+
+  const referenceAwareNodes = listCharacterReferenceNodeTypes(req.nodeTypes);
+  const capability = referenceAwareNodes.length > 0
+    ? `AVAILABLE via: ${referenceAwareNodes.join(', ')}`
+    : 'UNAVAILABLE in the current runtime catalog';
+
+  return [
+    '=== CHARACTER CONTINUITY RUNTIME DIRECTIVE ===',
+    'Mode: REQUIRED for this request/workflow.',
+    `Dedicated character-reference input: ${capability}.`,
+    'Create or identify one canonical character anchor and make every character-bearing scene descend from it.',
+    'Reject independent text-to-image character branches, seed-only identity claims, and unmasked full-frame edits presented as identity-safe.',
+    referenceAwareNodes.length > 0
+      ? 'Bind the canonical reference through a supported reference property on every scene branch.'
+      : 'Reuse the same canonical image as every Image-to-Video input and add manualSteps for reference-aware generation plus cross-shot face review; do not claim exact identity is guaranteed.',
+    'Explain the identity inheritance path and remaining capability gaps in the returned plan.'
+  ].join('\n');
+}
+
 export function buildWorkflowAgentPrompt(req: AssistantRequest): string {
   const selectedNode = req.selectedNodeId
     ? req.workflow.nodes.find((node) => node.id === req.selectedNodeId)
@@ -126,11 +213,13 @@ export function buildWorkflowAgentPrompt(req: AssistantRequest): string {
     name: credential.name,
     type: credential.type
   }));
+  const characterContinuityDirective = buildCharacterContinuityDirective(req);
 
   return [
     '=== USER REQUEST ===',
     req.prompt,
     '',
+    ...(characterContinuityDirective ? [characterContinuityDirective, ''] : []),
     '=== EDITING SCOPE ===',
     JSON.stringify({ selectedNodeId: req.selectedNodeId, selectedNode: sanitizeNode(selectedNode) }, null, 2),
     '',

@@ -7,6 +7,11 @@ import type {
   WorkflowAgentOperation,
   WorkflowAgentPlan
 } from './types.js';
+import {
+  listCharacterReferenceNodeTypes,
+  requiresCharacterContinuity,
+  requiresMultiSceneVideo
+} from './prompt.js';
 
 const MEDIA_PROVIDER_MODELS: Record<string, Record<string, string[]>> = {
   'm2m.media.generateImage': {
@@ -632,6 +637,70 @@ function validateReadiness(
   return errors;
 }
 
+function validateCharacterContinuity(
+  definition: WorkflowDefinition,
+  userPrompt: string | undefined,
+  nodeTypes: AssistantNodeType[] | undefined,
+  manualSteps: string[]
+): string[] {
+  if (!userPrompt || !requiresCharacterContinuity({ prompt: userPrompt, workflow: definition })) return [];
+
+  const errors: string[] = [];
+  const videoNodes = definition.nodes.filter((node) => node.type === 'm2m.media.imageToVideo');
+  if (requiresMultiSceneVideo({ prompt: userPrompt, workflow: definition }) && videoNodes.length < 2) {
+    errors.push('Yêu cầu phim nhiều cảnh cần ít nhất hai nhánh Image-to-Video riêng biệt để kiểm soát tính liên tục.');
+  }
+
+  if (videoNodes.length > 1) {
+    const nodesById = new Map(definition.nodes.map((node) => [node.id, node]));
+    const incoming = new Map<string, string[]>();
+    for (const edge of definition.edges) {
+      const parents = incoming.get(edge.target) ?? [];
+      parents.push(edge.source);
+      incoming.set(edge.target, parents);
+    }
+
+    const collectMediaAncestors = (startId: string): Set<string> => {
+      const mediaAncestors = new Set<string>();
+      const visited = new Set<string>();
+      const queue = [...(incoming.get(startId) ?? [])];
+      while (queue.length > 0) {
+        const nodeId = queue.shift()!;
+        if (visited.has(nodeId)) continue;
+        visited.add(nodeId);
+        const node = nodesById.get(nodeId);
+        if (!node) continue;
+        if (node.type === 'm2m.media.generateImage' || node.type === 'm2m.media.editImage') {
+          mediaAncestors.add(node.id);
+        }
+        queue.push(...(incoming.get(nodeId) ?? []));
+      }
+      return mediaAncestors;
+    };
+
+    const ancestorSets = videoNodes.map((node) => collectMediaAncestors(node.id));
+    const commonMediaAnchors = ancestorSets.length === 0
+      ? []
+      : [...ancestorSets[0]].filter((id) => ancestorSets.every((set) => set.has(id)));
+    const imageInputs = videoNodes.map((node) => node.parameters.image);
+    const sharedExplicitImage = imageInputs.every((value) => typeof value === 'string' && value.length > 0)
+      && new Set(imageInputs).size === 1
+      && imageInputs[0] !== '{{ $json.media }}';
+
+    if (commonMediaAnchors.length === 0 && !sharedExplicitImage) {
+      errors.push('Các cảnh video chưa kế thừa cùng một Character Anchor; không được dùng các nhánh tạo nhân vật độc lập cho workflow cần giữ nguyên khuôn mặt.');
+    }
+  }
+
+  if (listCharacterReferenceNodeTypes(nodeTypes).length === 0) {
+    manualSteps.push(
+      'Runtime chưa có input character-reference/identity-QA chuyên dụng: hãy duyệt khuôn mặt xuyên cảnh hoặc bổ sung provider reference-aware trước khi coi workflow là sẵn sàng sản xuất.'
+    );
+  }
+
+  return errors;
+}
+
 export function applyWorkflowAgentPlan(input: {
   workflow: WorkflowDefinition;
   plan: WorkflowAgentPlan;
@@ -639,6 +708,7 @@ export function applyWorkflowAgentPlan(input: {
   availableCredentials?: AssistantCredentialSummary[];
   providerStatuses?: AssistantProviderStatus[];
   allowReplaceWorkflow?: boolean;
+  userPrompt?: string;
 }): {
   definition: WorkflowDefinition;
   changes: string[];
@@ -822,7 +892,10 @@ export function applyWorkflowAgentPlan(input: {
     manualSteps
   );
 
-  const readinessErrors = validateReadiness(definition, catalog, manualSteps);
+  const readinessErrors = [
+    ...validateReadiness(definition, catalog, manualSteps),
+    ...validateCharacterContinuity(definition, input.userPrompt, input.nodeTypes, manualSteps)
+  ];
   warnings.push(...readinessErrors);
   const unique = (values: string[]) => [...new Set(values.filter(Boolean))];
 

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createNodeRegistry } from '../packages/config/src/index.js';
 import { applyWorkflowAgentPlan, processWorkflowAssistant } from '../apps/api/src/assistant-service.js';
+import {
+  buildWorkflowAgentPrompt,
+  WORKFLOW_AGENT_SYSTEM_INSTRUCTION
+} from '../apps/api/src/workflow-assistant/prompt.js';
 import type { WorkflowDefinition } from '../packages/shared/src/index.js';
 
 const registry = createNodeRegistry();
@@ -39,6 +43,122 @@ function workflowWithVideo(provider = 'huggingface'): WorkflowDefinition {
 
 describe('workflow Gemini assistant', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('activates the character-continuity protocol and reports runtime reference capability honestly', () => {
+    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION).toContain('CHARACTER IDENTITY & MULTI-SHOT CONTINUITY PROTOCOL');
+    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION).toContain('Never generate recurring-character scene frames as unrelated text-to-image calls');
+    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION).toContain("'core.forEach' only bounds a collection");
+    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION).toContain('never say exact identity is guaranteed');
+
+    const request = {
+      prompt: 'Tạo một bộ phim ngắn nhiều cảnh và giữ nguyên khuôn mặt nhân vật chính',
+      workflow: {
+        nodes: [{ id: 'trigger', type: 'trigger.manual', name: 'Trigger', position: { x: 0, y: 0 }, parameters: {} }],
+        edges: [],
+        settings: {}
+      },
+      nodeTypes
+    };
+
+    const promptWithoutReferenceSupport = buildWorkflowAgentPrompt(request);
+    expect(promptWithoutReferenceSupport).toContain('=== CHARACTER CONTINUITY RUNTIME DIRECTIVE ===');
+    expect(promptWithoutReferenceSupport).toContain('Mode: REQUIRED');
+    expect(promptWithoutReferenceSupport).toContain('UNAVAILABLE in the current runtime catalog');
+    expect(promptWithoutReferenceSupport).toContain('add manualSteps for reference-aware generation plus cross-shot face review');
+
+    const promptWithReferenceSupport = buildWorkflowAgentPrompt({
+      ...request,
+      nodeTypes: nodeTypes.map((nodeType) => nodeType.type === 'm2m.media.generateImage'
+        ? {
+            ...nodeType,
+            properties: [
+              ...(nodeType.properties ?? []),
+              { name: 'referenceImages', type: 'string', displayName: 'Character References' }
+            ]
+          }
+        : nodeType)
+    });
+    expect(promptWithReferenceSupport).toContain('AVAILABLE via: m2m.media.generateImage');
+    expect(promptWithReferenceSupport).toContain('Bind the canonical reference through a supported reference property');
+  });
+
+  it('rejects independent character roots and keeps best-effort continuity workflows out of production-ready state', () => {
+    const makeNode = (id: string, type: string, name: string, parameters: Record<string, unknown>) => ({
+      id,
+      type,
+      name,
+      position: { x: 0, y: 0 },
+      parameters
+    });
+    const baseWorkflow = {
+      nodes: [{ id: 'trigger', type: 'trigger.manual', name: 'Trigger', position: { x: 0, y: 0 }, parameters: {} }],
+      edges: [],
+      settings: {}
+    };
+    const independentPlan = {
+      explanation: 'Create two independent character shots',
+      assumptions: [],
+      manualSteps: [],
+      operations: [{
+        op: 'replaceWorkflow' as const,
+        nodes: [
+          makeNode('trigger', 'trigger.manual', 'Trigger', {}),
+          makeNode('portrait_a', 'm2m.media.generateImage', 'Character A Scene 1', { provider: 'pollinations', model: 'pollinations-flux', prompt: 'same heroine in scene one' }),
+          makeNode('portrait_b', 'm2m.media.generateImage', 'Character A Scene 2', { provider: 'pollinations', model: 'pollinations-flux', prompt: 'same heroine in scene two' }),
+          makeNode('video_a', 'm2m.media.imageToVideo', 'Animate Scene 1', { provider: 'comfyui', model: 'wan2.2-ti2v-5b', prompt: 'gentle motion' }),
+          makeNode('video_b', 'm2m.media.imageToVideo', 'Animate Scene 2', { provider: 'comfyui', model: 'wan2.2-ti2v-5b', prompt: 'gentle motion' })
+        ],
+        edges: [
+          { id: 'e1', source: 'trigger', target: 'portrait_a' },
+          { id: 'e2', source: 'trigger', target: 'portrait_b' },
+          { id: 'e3', source: 'portrait_a', target: 'video_a' },
+          { id: 'e4', source: 'portrait_b', target: 'video_b' }
+        ]
+      }]
+    };
+
+    const rejected = applyWorkflowAgentPlan({
+      workflow: baseWorkflow,
+      plan: independentPlan,
+      nodeTypes,
+      allowReplaceWorkflow: true,
+      userPrompt: 'Tạo phim ngắn nhiều cảnh với cùng một khuôn mặt nhân vật'
+    });
+    expect(rejected.canApply).toBe(false);
+    expect(rejected.readyToRun).toBe(false);
+    expect(rejected.warnings.join(' ')).toContain('chưa kế thừa cùng một Character Anchor');
+    expect(rejected.manualSteps.join(' ')).toContain('character-reference/identity-QA');
+
+    const sharedAnchorPlan = {
+      ...independentPlan,
+      explanation: 'Reuse one canonical character anchor for every shot',
+      operations: [{
+        op: 'replaceWorkflow' as const,
+        nodes: [
+          makeNode('trigger', 'trigger.manual', 'Trigger', {}),
+          makeNode('anchor', 'm2m.media.generateImage', 'Canonical Character Anchor', { provider: 'pollinations', model: 'pollinations-flux', prompt: 'canonical heroine identity lock' }),
+          makeNode('video_a', 'm2m.media.imageToVideo', 'Animate Scene 1', { provider: 'comfyui', model: 'wan2.2-ti2v-5b', prompt: 'gentle scene one motion' }),
+          makeNode('video_b', 'm2m.media.imageToVideo', 'Animate Scene 2', { provider: 'comfyui', model: 'wan2.2-ti2v-5b', prompt: 'gentle scene two motion' })
+        ],
+        edges: [
+          { id: 'e1', source: 'trigger', target: 'anchor' },
+          { id: 'e2', source: 'anchor', target: 'video_a' },
+          { id: 'e3', source: 'anchor', target: 'video_b' }
+        ]
+      }]
+    };
+    const bestEffort = applyWorkflowAgentPlan({
+      workflow: baseWorkflow,
+      plan: sharedAnchorPlan,
+      nodeTypes,
+      allowReplaceWorkflow: true,
+      userPrompt: 'Tạo phim ngắn nhiều cảnh với cùng một khuôn mặt nhân vật'
+    });
+    expect(bestEffort.canApply).toBe(true);
+    expect(bestEffort.readyToRun).toBe(false);
+    expect(bestEffort.warnings.join(' ')).not.toContain('chưa kế thừa cùng một Character Anchor');
+    expect(bestEffort.manualSteps.join(' ')).toContain('character-reference/identity-QA');
+  });
 
   it('applies a minimal node update without dropping credentials or runtime controls', () => {
     const result = applyWorkflowAgentPlan({
@@ -645,6 +765,4 @@ describe('workflow Gemini assistant', () => {
     expect(animator.parameters.image).toBe('{{ $json.media }}');
   });
 });
-
-
 

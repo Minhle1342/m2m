@@ -161,6 +161,7 @@ export async function processWorkflowAssistant(req: AssistantRequest): Promise<A
     nodeTypes: req.nodeTypes,
     availableCredentials: req.availableCredentials,
     providerStatuses: req.providerStatuses,
+    userPrompt: req.prompt,
     allowReplaceWorkflow: req.workflow.nodes.length === 0
       || (req.workflow.nodes.length === 1 && req.workflow.nodes[0].type === 'trigger.manual')
       || /(?:create|build|generate|rebuild|replace|recreate|from scratch|tạo mới|tạo|làm lại|tạo lại|xây dựng lại|xây dựng|thay toàn bộ|xóa toàn bộ).{0,24}(?:workflow|quy trình)|(?:workflow|quy trình).{0,24}(?:from scratch|từ đầu|toàn bộ)/i.test(req.prompt)
