@@ -12,6 +12,7 @@ const props = defineProps<
     status?: string;
     media?: MediaFile;
     mediaDeleted?: boolean;
+    assistantPreview?: 'added' | 'modified' | 'removed' | 'unchanged';
   }>
 >();
 
@@ -21,6 +22,12 @@ const isVi = computed(() => locale.value === 'vi');
 const media = computed(() => props.data.media);
 const isImage = computed(() => media.value?.type === 'image');
 const isVideo = computed(() => media.value?.type === 'video');
+const assistantPreviewLabel = computed(() => {
+  if (props.data.assistantPreview === 'added') return isVi.value ? 'Thêm mới' : 'Added';
+  if (props.data.assistantPreview === 'modified') return isVi.value ? 'Đã sửa' : 'Changed';
+  if (props.data.assistantPreview === 'removed') return isVi.value ? 'Sẽ xóa' : 'Removed';
+  return '';
+});
 
 const miniVideoRef = ref<HTMLVideoElement>();
 
@@ -48,7 +55,15 @@ function handleAction(event: string, e: Event, extra?: Record<string, unknown>) 
 </script>
 
 <template>
-  <div class="flow-node" :class="[data.status, { 'has-media': Boolean(media && !data.mediaDeleted) }]">
+  <div
+    class="flow-node"
+    :class="[
+      data.status,
+      data.assistantPreview ? `assistant-preview-${data.assistantPreview}` : '',
+      { 'has-media': Boolean(media && !data.mediaDeleted) }
+    ]"
+  >
+    <span v-if="assistantPreviewLabel" class="assistant-preview-badge">{{ assistantPreviewLabel }}</span>
     <Handle v-if="(data.metadata?.inputs ?? 1) > 0" type="target" :position="Position.Left" />
 
     <!-- Main Node Header -->
@@ -76,6 +91,7 @@ function handleAction(event: string, e: Event, extra?: Record<string, unknown>) 
 
       <!-- Run from this node button -->
       <button
+        v-if="!data.assistantPreview"
         class="node-run-btn"
         :class="{ running: data.status === 'running' }"
         :title="isVi ? 'Chạy tiếp tục từ node này đến cuối quy trình' : 'Execute workflow starting from this node to end'"
@@ -154,6 +170,7 @@ function handleAction(event: string, e: Event, extra?: Record<string, unknown>) 
 
 <style scoped>
 .flow-node {
+  position: relative;
   min-width: 180px;
   background: #171b23;
   border: 1px solid #3a4251;
@@ -165,6 +182,48 @@ function handleAction(event: string, e: Event, extra?: Record<string, unknown>) 
   box-shadow: 0 7px 22px #0007;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+.flow-node.assistant-preview-added {
+  border-color: #3bf49c;
+  box-shadow: 0 0 0 2px rgba(59, 244, 156, 0.2), 0 10px 30px rgba(24, 180, 110, 0.24);
+}
+
+.flow-node.assistant-preview-modified {
+  border-color: #f6c85f;
+  box-shadow: 0 0 0 2px rgba(246, 200, 95, 0.18), 0 10px 30px rgba(180, 130, 30, 0.2);
+}
+
+.flow-node.assistant-preview-removed {
+  border-color: #ff6b7a;
+  border-style: dashed;
+  opacity: 0.62;
+  filter: grayscale(0.45);
+}
+
+.flow-node.assistant-preview-unchanged {
+  opacity: 0.52;
+}
+
+.assistant-preview-badge {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  z-index: 2;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #101722;
+  border: 1px solid currentColor;
+  color: #dce8fa;
+  font-family: 'Space Mono', monospace;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  box-shadow: 0 3px 10px #0008;
+}
+
+.assistant-preview-added .assistant-preview-badge { color: #3bf49c; }
+.assistant-preview-modified .assistant-preview-badge { color: #f6c85f; }
+.assistant-preview-removed .assistant-preview-badge { color: #ff6b7a; }
 
 .flow-node.has-media {
   min-width: 220px;

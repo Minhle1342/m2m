@@ -642,8 +642,6 @@ export function createApp(db: M2MDataSource, queue: BullQueueAdapter, events: Ex
     const result = await processWorkflowAssistant(await buildAssistantContext(req, body, req.params.id));
     const validation = validateWorkflow(result.definition, registry);
     if (!validation.valid) {
-      const blockingErrors = validation.errors.filter((issue) => issue.code !== 'CREDENTIAL_REQUIRED');
-      result.canApply = result.canApply && blockingErrors.length === 0;
       result.readyToRun = false;
       result.warnings = [...new Set([
         ...result.warnings,
@@ -658,8 +656,6 @@ export function createApp(db: M2MDataSource, queue: BullQueueAdapter, events: Ex
     const result = await processWorkflowAssistant(await buildAssistantContext(req, body));
     const validation = validateWorkflow(result.definition, registry);
     if (!validation.valid) {
-      const blockingErrors = validation.errors.filter((issue) => issue.code !== 'CREDENTIAL_REQUIRED');
-      result.canApply = result.canApply && blockingErrors.length === 0;
       result.readyToRun = false;
       result.warnings = [...new Set([...result.warnings, ...validation.errors.map((issue) => issue.message)])];
     }

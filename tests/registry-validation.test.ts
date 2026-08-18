@@ -27,4 +27,12 @@ describe('node registry and graph validation',()=>{
     ],edges:[{id:'trigger-video',source:'trigger',target:'video'}],settings:{}},registry);
     expect(result.errors).toEqual(expect.arrayContaining([expect.objectContaining({code:'CREDENTIAL_REQUIRED',nodeId:'video'})]));
   });
+  it('accepts approved string transforms in workflow expressions',()=>{
+    const result=validateWorkflow({nodes:[
+      {id:'trigger',type:'trigger.manual',name:'Manual',position:{x:0,y:0},parameters:{}},
+      {id:'normalize',type:'core.transform',name:'Normalize Email',position:{x:1,y:1},parameters:{template:{customerEmail:'{{ $json.customerEmail.toLowerCase() }}'},mergeInput:true}}
+    ],edges:[{id:'trigger-normalize',source:'trigger',target:'normalize'}],settings:{}},registry);
+    expect(result.errors).not.toEqual(expect.arrayContaining([expect.objectContaining({code:'INVALID_EXPRESSION',nodeId:'normalize'})]));
+    expect(registry.get('core.transform').metadata.properties.find(property=>property.name==='template')?.description).toContain('.toLowerCase()');
+  });
 });

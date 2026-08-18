@@ -44,6 +44,103 @@
 @media(max-width:1100px){.help-grid-layout{grid-template-columns:1fr}.help-toc{position:static}}
 
 /* Canvas Gemini Copilot Bar */
+.assistant-canvas-preview {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  overflow: hidden;
+  background: rgba(8, 11, 17, 0.94);
+  backdrop-filter: blur(2px);
+}
+
+.assistant-preview-flow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.assistant-preview-toolbar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 12;
+  transform: translateX(-50%);
+  width: min(calc(100% - 28px), 780px);
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid #33425a;
+  border-radius: 13px;
+  background: rgba(15, 20, 29, 0.96);
+  box-shadow: 0 12px 34px #0009, 0 0 22px rgba(70, 100, 150, 0.18);
+  backdrop-filter: blur(16px);
+}
+
+.assistant-preview-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 190px;
+}
+
+.assistant-preview-heading strong,
+.assistant-preview-heading small {
+  display: block;
+}
+
+.assistant-preview-heading strong {
+  font-size: 12px;
+  color: #eef4ff;
+}
+
+.assistant-preview-heading small {
+  margin-top: 2px;
+  color: #7f8da4;
+  font-size: 9px;
+}
+
+.assistant-preview-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.assistant-preview-legend span {
+  padding: 3px 7px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font: 8px 'Space Mono', monospace;
+  background: #101620;
+}
+
+.assistant-preview-legend .added { color: #3bf49c; }
+.assistant-preview-legend .modified { color: #f6c85f; }
+.assistant-preview-legend .removed { color: #ff6b7a; }
+.assistant-preview-legend .warning { color: #ffcc80; }
+
+.assistant-preview-actions {
+  display: flex;
+  gap: 7px;
+  margin-left: auto;
+}
+
+.assistant-preview-actions button {
+  padding: 7px 10px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.assistant-canvas-preview .vue-flow__controls {
+  left: 12px;
+  bottom: 12px;
+}
+
 .canvas-ai-copilot-container {
   position: absolute;
   bottom: 22px;
@@ -56,6 +153,63 @@
   gap: 8px;
   width: min(92%, 620px);
   pointer-events: auto;
+}
+
+.canvas-ai-copilot-container.collapsed {
+  pointer-events: none;
+}
+
+.ai-chat-collapse-btn {
+  align-self: center;
+  width: 48px;
+  height: 22px;
+  margin-bottom: -5px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid #2a374c;
+  border-radius: 12px 12px 5px 5px;
+  background: rgba(13, 17, 25, 0.96);
+  color: #8da2c4;
+  box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.ai-chat-collapse-btn:hover,
+.ai-chat-collapse-btn:focus-visible {
+  color: #fff;
+  border-color: #5576a8;
+  background: #1a273b;
+  outline: none;
+}
+
+.ai-chat-collapse-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.2s ease;
+}
+
+.ai-chat-collapse-btn.collapsed svg {
+  transform: rotate(180deg);
+}
+
+.ai-bar-slide-enter-active,
+.ai-bar-slide-leave-active {
+  transition: opacity 0.18s ease, transform 0.2s ease;
+  transform-origin: bottom center;
+}
+
+.ai-bar-slide-enter-from,
+.ai-bar-slide-leave-to {
+  opacity: 0;
+  transform: translateY(18px) scale(0.98);
 }
 
 .ai-explanation-bubble {
@@ -784,6 +938,3 @@
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
 }
-
-
-

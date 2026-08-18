@@ -120,7 +120,10 @@ class TransformNode extends BaseNode {
     type: this.type, version: 1, displayName: 'Transform', category: 'core', icon: 'wand', inputs: 1, outputs: 1,
     description: 'Build an object from expression-resolved values without executing arbitrary code.',
     properties: [
-      { name: 'template', displayName: 'Output template', type: 'json', required: true, default: {} },
+      {
+        name: 'template', displayName: 'Output template', type: 'json', required: true, default: {},
+        description: 'Expression values support property/index reads and terminal .toLowerCase(), .toUpperCase(), or .trim() transforms.'
+      },
       { name: 'mergeInput', displayName: 'Merge input', type: 'boolean', default: false },
     ],
   };

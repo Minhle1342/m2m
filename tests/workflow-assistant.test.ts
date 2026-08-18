@@ -45,10 +45,10 @@ describe('workflow Gemini assistant', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('activates the character-continuity protocol and reports runtime reference capability honestly', () => {
-    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION).toContain('CHARACTER IDENTITY & MULTI-SHOT CONTINUITY PROTOCOL');
-    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION).toContain('Never generate recurring-character scene frames as unrelated text-to-image calls');
-    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION).toContain("'core.forEach' only bounds a collection");
-    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION).toContain('never say exact identity is guaranteed');
+    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION.length).toBeGreaterThanOrEqual(2_000);
+    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION.length).toBeLessThanOrEqual(2_800);
+    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION).toContain('APPLICATION-ENFORCED INVARIANTS');
+    expect(WORKFLOW_AGENT_SYSTEM_INSTRUCTION).not.toContain('CHARACTER CONTINUITY');
 
     const request = {
       prompt: 'Tạo một bộ phim ngắn nhiều cảnh và giữ nguyên khuôn mặt nhân vật chính',
@@ -61,10 +61,16 @@ describe('workflow Gemini assistant', () => {
     };
 
     const promptWithoutReferenceSupport = buildWorkflowAgentPrompt(request);
-    expect(promptWithoutReferenceSupport).toContain('=== CHARACTER CONTINUITY RUNTIME DIRECTIVE ===');
-    expect(promptWithoutReferenceSupport).toContain('Mode: REQUIRED');
+    expect(promptWithoutReferenceSupport).toContain('=== ACTIVE INTENT POLICIES ===');
+    expect(promptWithoutReferenceSupport).toContain('POLICY: CHARACTER CONTINUITY (REQUIRED)');
     expect(promptWithoutReferenceSupport).toContain('UNAVAILABLE in the current runtime catalog');
-    expect(promptWithoutReferenceSupport).toContain('add manualSteps for reference-aware generation plus cross-shot face review');
+    expect(promptWithoutReferenceSupport).toContain('add manualSteps for reference-aware generation and cross-shot face review');
+    expect(promptWithoutReferenceSupport.indexOf('=== RUNTIME NODE CATALOG')).toBeLessThan(
+      promptWithoutReferenceSupport.indexOf('=== ACTIVE INTENT POLICIES ===')
+    );
+    expect(promptWithoutReferenceSupport.indexOf('=== ACTIVE INTENT POLICIES ===')).toBeLessThan(
+      promptWithoutReferenceSupport.indexOf('=== USER REQUEST ===')
+    );
 
     const promptWithReferenceSupport = buildWorkflowAgentPrompt({
       ...request,
@@ -79,7 +85,14 @@ describe('workflow Gemini assistant', () => {
         : nodeType)
     });
     expect(promptWithReferenceSupport).toContain('AVAILABLE via: m2m.media.generateImage');
-    expect(promptWithReferenceSupport).toContain('Bind the canonical reference through a supported reference property');
+    expect(promptWithReferenceSupport).toContain('Bind the canonical asset through a supported reference property');
+
+    const unrelatedPrompt = buildWorkflowAgentPrompt({
+      ...request,
+      prompt: 'Update one HTTP request URL',
+      workflow: workflowWithVideo()
+    });
+    expect(unrelatedPrompt).not.toContain('POLICY: CHARACTER CONTINUITY');
   });
 
   it('rejects independent character roots and keeps best-effort continuity workflows out of production-ready state', () => {
@@ -124,7 +137,7 @@ describe('workflow Gemini assistant', () => {
       allowReplaceWorkflow: true,
       userPrompt: 'Tạo phim ngắn nhiều cảnh với cùng một khuôn mặt nhân vật'
     });
-    expect(rejected.canApply).toBe(false);
+    expect(rejected.canApply).toBe(true);
     expect(rejected.readyToRun).toBe(false);
     expect(rejected.warnings.join(' ')).toContain('chưa kế thừa cùng một Character Anchor');
     expect(rejected.manualSteps.join(' ')).toContain('character-reference/identity-QA');
@@ -264,7 +277,14 @@ describe('workflow Gemini assistant', () => {
     };
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       status: 'completed',
-      steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(plan) }] }]
+      steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(plan) }]}],
+      usage: {
+        total_input_tokens: 1400,
+        total_cached_tokens: 900,
+        total_output_tokens: 120,
+        total_thought_tokens: 30,
+        total_tokens: 1550
+      }
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -287,6 +307,14 @@ describe('workflow Gemini assistant', () => {
     expect(body.response_format.schema.properties.operations.items.anyOf).toHaveLength(7);
     expect(result.definition.nodes.find((node) => node.id === 'video')?.parameters.prompt).toBe('Gentle camera pan');
     expect(result.mutationsCount).toBe(1);
+    expect(result.tokenUsage).toEqual({
+      requests: 1,
+      inputTokens: 1400,
+      cachedTokens: 900,
+      outputTokens: 120,
+      thoughtTokens: 30,
+      totalTokens: 1550
+    });
   });
 
   it('normalizes an equivalent Gemini operation variant before strict validation', async () => {
@@ -327,10 +355,12 @@ describe('workflow Gemini assistant', () => {
     };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        status: 'completed', steps: [{ content: [{ type: 'text', text: JSON.stringify(invalidPlan) }] }]
+        status: 'completed', steps: [{ content: [{ type: 'text', text: JSON.stringify(invalidPlan) }] }],
+        usage: { total_input_tokens: 1000, total_cached_tokens: 500, total_output_tokens: 50, total_tokens: 1050 }
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
-        status: 'completed', steps: [{ content: [{ type: 'text', text: JSON.stringify(repairedPlan) }] }]
+        status: 'completed', steps: [{ content: [{ type: 'text', text: JSON.stringify(repairedPlan) }] }],
+        usage: { total_input_tokens: 1300, total_cached_tokens: 900, total_output_tokens: 70, total_tokens: 1370 }
       }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -346,6 +376,14 @@ describe('workflow Gemini assistant', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(JSON.parse(String(fetchMock.mock.calls[1][1]?.body)).input)).toContain('SCHEMA REPAIR REQUIRED');
     expect(result.definition.nodes.find((node) => node.id === 'video')?.parameters.prompt).toBe('Repaired move');
+    expect(result.tokenUsage).toEqual({
+      requests: 2,
+      inputTokens: 2300,
+      cachedTokens: 1400,
+      outputTokens: 120,
+      thoughtTokens: 0,
+      totalTokens: 2420
+    });
   });
 
   it('generates multi-entity decomposition and final composition workflow', async () => {
@@ -483,7 +521,8 @@ describe('workflow Gemini assistant', () => {
                 prompt: 'Chiến binh dũng cảm trong bộ giáp bạc'
               }
             }
-          }
+          },
+          { op: 'addEdge', edge: { id: 'trigger-char1', source: 'trigger', target: 'char1' } }
         ]
       },
       nodeTypes,
@@ -728,6 +767,45 @@ describe('workflow Gemini assistant', () => {
     expect(e3.sourceHandle).toBe('false');
   });
 
+  it('allows an invalid generated workflow to be applied as a draft while blocking execution', () => {
+    const result = applyWorkflowAgentPlan({
+      workflow: {
+        nodes: [{ id: 'trigger', type: 'trigger.manual', name: 'Trigger', position: { x: 0, y: 0 }, parameters: {} }],
+        edges: [],
+        settings: {}
+      },
+      plan: {
+        explanation: 'Invalid cyclic graph',
+        assumptions: [],
+        manualSteps: [],
+        operations: [{
+          op: 'replaceWorkflow',
+          nodes: [
+            { id: 'trigger', type: 'trigger.manual', name: 'Trigger', parameters: {} },
+            { id: 'step', type: 'core.transform', name: 'Step', parameters: {} },
+            { id: 'orphan', type: 'core.transform', name: 'Orphan', parameters: {} }
+          ],
+          edges: [
+            { id: 'e1', source: 'trigger', target: 'step' },
+            { id: 'e2', source: 'step', target: 'step' },
+            { id: 'e2', source: 'step', target: 'trigger' },
+            { id: 'e3', source: 'trigger', target: 'missing' }
+          ]
+        }]
+      },
+      allowReplaceWorkflow: true,
+      nodeTypes
+    });
+
+    expect(result.canApply).toBe(true);
+    expect(result.readyToRun).toBe(false);
+    expect(result.warnings.join(' ')).toContain('edge ID trùng lặp: e2');
+    expect(result.warnings.join(' ')).toContain('self-loop tại edge: e2');
+    expect(result.warnings.join(' ')).toContain('chứa chu trình');
+    expect(result.warnings.join(' ')).toContain('orphan');
+    expect(result.warnings.join(' ')).toContain("Đã loại kết nối 'e3'");
+  });
+
   it('automatically injects type-safe data expressions between upstream and downstream nodes', () => {
     const result = applyWorkflowAgentPlan({
       workflow: {
@@ -765,4 +843,3 @@ describe('workflow Gemini assistant', () => {
     expect(animator.parameters.image).toBe('{{ $json.media }}');
   });
 });
-

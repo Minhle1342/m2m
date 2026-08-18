@@ -4,7 +4,6 @@ import type {
   AssistantCredentialSummary,
   AssistantNodeType,
   AssistantProviderStatus,
-  WorkflowAgentOperation,
   WorkflowAgentPlan
 } from './types.js';
 import {
@@ -115,7 +114,7 @@ function alignProviderAndModel(
   parameters: Record<string, unknown>,
   rawParameters: Record<string, unknown>,
   availableCredentials?: AssistantCredentialSummary[],
-  providerStatuses?: AssistantProviderStatus[]
+  _providerStatuses?: AssistantProviderStatus[]
 ): void {
   const isMedia = Boolean(MEDIA_PROVIDER_MODELS[type]);
   const isAI = type.startsWith('ai.') && (
@@ -462,6 +461,80 @@ function injectDataExpressions(
   }
 }
 
+interface GraphTopologyAnalysis {
+  duplicateNodeIds: string[];
+  duplicateEdgeIds: string[];
+  selfLoopEdgeIds: string[];
+  hasCycle: boolean;
+  unreachableNodeIds: string[];
+}
+
+function analyzeGraphTopology(
+  nodes: WorkflowNode[],
+  edges: WorkflowEdge[],
+  catalog: Map<string, AssistantNodeType>
+): GraphTopologyAnalysis {
+  const duplicates = (values: string[]) => {
+    const seen = new Set<string>();
+    const repeated = new Set<string>();
+    for (const value of values) {
+      if (seen.has(value)) repeated.add(value);
+      seen.add(value);
+    }
+    return [...repeated];
+  };
+
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const adjacency = new Map(nodes.map((node) => [node.id, [] as string[]]));
+  const selfLoopEdgeIds: string[] = [];
+  for (const edge of edges) {
+    if (edge.source === edge.target) selfLoopEdgeIds.push(edge.id);
+    if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
+      adjacency.get(edge.source)?.push(edge.target);
+    }
+  }
+
+  const colors = new Map<string, 0 | 1 | 2>();
+  let hasCycle = false;
+  const visit = (nodeId: string) => {
+    if (hasCycle) return;
+    const color = colors.get(nodeId) ?? 0;
+    if (color === 1) {
+      hasCycle = true;
+      return;
+    }
+    if (color === 2) return;
+    colors.set(nodeId, 1);
+    for (const nextId of adjacency.get(nodeId) ?? []) visit(nextId);
+    colors.set(nodeId, 2);
+  };
+  for (const node of nodes) visit(node.id);
+
+  const triggerIds = nodes
+    .filter((node) => catalog.get(node.type)?.category === 'trigger')
+    .map((node) => node.id);
+  const reachable = new Set<string>();
+  if (triggerIds.length === 1) {
+    const queue = [triggerIds[0]];
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      if (reachable.has(nodeId)) continue;
+      reachable.add(nodeId);
+      queue.push(...(adjacency.get(nodeId) ?? []));
+    }
+  }
+
+  return {
+    duplicateNodeIds: duplicates(nodes.map((node) => node.id)),
+    duplicateEdgeIds: duplicates(edges.map((edge) => edge.id)),
+    selfLoopEdgeIds,
+    hasCycle,
+    unreachableNodeIds: triggerIds.length === 1
+      ? nodes.filter((node) => !reachable.has(node.id)).map((node) => node.id)
+      : []
+  };
+}
+
 function applySugiyamaDAGLayout(
   nodes: WorkflowNode[],
   edges: WorkflowEdge[],
@@ -609,6 +682,21 @@ function validateReadiness(
   const triggers = definition.nodes.filter((node) => catalog.get(node.type)?.category === 'trigger');
   if (triggers.length !== 1) errors.push(`Workflow cần đúng một trigger, hiện có ${triggers.length}.`);
 
+  const topology = analyzeGraphTopology(definition.nodes, definition.edges, catalog);
+  if (topology.duplicateNodeIds.length > 0) {
+    errors.push(`Workflow có node ID trùng lặp: ${topology.duplicateNodeIds.join(', ')}.`);
+  }
+  if (topology.duplicateEdgeIds.length > 0) {
+    errors.push(`Workflow có edge ID trùng lặp: ${topology.duplicateEdgeIds.join(', ')}.`);
+  }
+  if (topology.selfLoopEdgeIds.length > 0) {
+    errors.push(`Workflow có self-loop tại edge: ${topology.selfLoopEdgeIds.join(', ')}.`);
+  }
+  if (topology.hasCycle) errors.push('Workflow chứa chu trình; kết quả bắt buộc phải là DAG.');
+  if (topology.unreachableNodeIds.length > 0) {
+    errors.push(`Các node không thể đi tới từ trigger: ${topology.unreachableNodeIds.join(', ')}.`);
+  }
+
   for (const node of definition.nodes) {
     const metadata = catalog.get(node.type);
     if (!metadata) {
@@ -632,6 +720,17 @@ function validateReadiness(
   for (const edge of definition.edges) {
     if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
       errors.push(`Kết nối '${edge.id}' trỏ tới node không tồn tại.`);
+      continue;
+    }
+    const source = definition.nodes.find((node) => node.id === edge.source);
+    const sourceMetadata = source ? catalog.get(source.type) : undefined;
+    const allowedHandles = source?.type === 'core.if'
+      ? ['true', 'false']
+      : source?.type === 'core.switch'
+        ? ['case1', 'case2', 'case3', 'case4', 'default']
+        : sourceMetadata?.outputNames;
+    if (allowedHandles?.length && (!edge.sourceHandle || !allowedHandles.includes(edge.sourceHandle))) {
+      errors.push(`Kết nối '${edge.id}' dùng sourceHandle không hợp lệ cho node '${source?.name ?? edge.source}'.`);
     }
   }
   return errors;
@@ -723,6 +822,7 @@ export function applyWorkflowAgentPlan(input: {
   const warnings: string[] = [...(input.plan.assumptions ?? [])];
   const manualSteps: string[] = [...(input.plan.manualSteps ?? [])];
   const changes: string[] = [];
+  const structuralErrors: string[] = [];
   const touchedNodeIds = new Set<string>();
 
   for (const operation of input.plan.operations) {
@@ -868,12 +968,13 @@ export function applyWorkflowAgentPlan(input: {
   const validNodeIds = new Set(definition.nodes.map((node) => node.id));
   definition.edges = definition.edges.filter((edge) => {
     const valid = validNodeIds.has(edge.source) && validNodeIds.has(edge.target);
-    if (!valid) warnings.push(`Đã loại kết nối '${edge.id}' vì node nguồn hoặc đích không tồn tại.`);
+    if (!valid) structuralErrors.push(`Đã loại kết nối '${edge.id}' vì node nguồn hoặc đích không tồn tại.`);
     return valid;
   });
 
-  // 1. Apply Sugiyama DAG layout if nodes have unassigned or overlapping positions
-  if (shouldAutoLayout(definition.nodes)) {
+  // 1. Apply Sugiyama layout only to a valid DAG. Cycles are rejected below.
+  const topologyBeforeLayout = analyzeGraphTopology(definition.nodes, definition.edges, catalog);
+  if (!topologyBeforeLayout.hasCycle && shouldAutoLayout(definition.nodes)) {
     applySugiyamaDAGLayout(definition.nodes, definition.edges, catalog);
   }
 
@@ -893,6 +994,7 @@ export function applyWorkflowAgentPlan(input: {
   );
 
   const readinessErrors = [
+    ...structuralErrors,
     ...validateReadiness(definition, catalog, manualSteps),
     ...validateCharacterContinuity(definition, input.userPrompt, input.nodeTypes, manualSteps)
   ];
@@ -904,7 +1006,9 @@ export function applyWorkflowAgentPlan(input: {
     changes: unique(changes),
     warnings: unique(warnings),
     manualSteps: unique(manualSteps),
-    canApply: changes.length > 0 && readinessErrors.length === 0,
+    // A generated definition can still be useful as an editable draft when it
+    // is not ready to execute yet. Readiness is reported separately below.
+    canApply: changes.length > 0,
     readyToRun: readinessErrors.length === 0 && manualSteps.length === 0
   };
 }

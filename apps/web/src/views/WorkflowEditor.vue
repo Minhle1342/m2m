@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { VueFlow, type Connection, type NodeMouseEvent } from '@vue-flow/core';
+import { VueFlow, type Connection, type NodeMouseEvent, type Styles } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
@@ -17,7 +17,9 @@ import { GEMINI_MODELS, type GeminiModelSpec } from '../services/gemini-models';
 import { DEFAULT_NODE_TYPES } from '../services/default-node-types';
 import { useAppStore } from '../stores/app';
 import { useI18n } from '../services/i18n';
-import type { Credential, Execution, NodeType, Workflow, WorkflowDefinition, MediaFile } from '../types';
+import type { Credential, Execution, NodeType, Workflow, WorkflowDefinition, WorkflowEdge, WorkflowNode, MediaFile } from '../types';
+
+type AssistantPreviewState = 'added' | 'modified' | 'removed' | 'unchanged';
 
 interface FlowData {
   name: string;
@@ -31,6 +33,7 @@ interface FlowData {
   timeoutMs?: number;
   media?: MediaFile;
   mediaDeleted?: boolean;
+  assistantPreview?: AssistantPreviewState;
 }
 interface EditorNode {
   id: string;
@@ -45,6 +48,8 @@ interface EditorEdge {
   sourceHandle?: string | null;
   targetHandle?: string | null;
   type?: string;
+  animated?: boolean;
+  style?: Styles;
 }
 interface Snapshot {
   nodes: EditorNode[];
@@ -107,6 +112,7 @@ const isAiProcessing = ref(false);
 const aiExplanation = ref('');
 const aiExplanationTimer = ref<number>();
 const pendingAiResult = ref<WorkflowAssistantResult | null>(null);
+const isAiChatCollapsed = ref(false);
 
 const selectedGeminiModelId = ref<string>('gemini-3.6-flash');
 const currentModelSpec = computed<GeminiModelSpec>(() =>
@@ -128,6 +134,11 @@ function selectTokens(tokens: number) {
 
 function toggleModelMenu() {
   isModelMenuOpen.value = !isModelMenuOpen.value;
+}
+
+function toggleAiChatCollapsed() {
+  isAiChatCollapsed.value = !isAiChatCollapsed.value;
+  if (isAiChatCollapsed.value) isModelMenuOpen.value = false;
 }
 
 function handleAiBarClickOutside(event: MouseEvent) {
@@ -353,6 +364,138 @@ function toDefinition(): WorkflowDefinition {
     },
   };
 }
+
+function canonicalizePreviewValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizePreviewValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, canonicalizePreviewValue(item)]),
+    );
+  }
+  return value;
+}
+
+function hasSamePreviewValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(canonicalizePreviewValue(left)) === JSON.stringify(canonicalizePreviewValue(right));
+}
+
+function previewNodeComparable(node: WorkflowNode) {
+  return {
+    id: node.id,
+    type: node.type,
+    name: node.name,
+    position: node.position,
+    parameters: node.parameters,
+    credentials: node.credentials,
+    disabled: node.disabled,
+    retry: node.retry,
+    timeoutMs: node.timeoutMs,
+  };
+}
+
+function previewEdgeComparable(edge: WorkflowEdge) {
+  return {
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
+  };
+}
+
+function toAssistantPreviewNode(node: WorkflowNode, state: AssistantPreviewState): EditorNode {
+  const existing = nodes.value.find((item) => item.id === node.id);
+  return {
+    id: node.id,
+    type: 'm2m',
+    position: node.position,
+    data: {
+      name: node.name,
+      nodeType: node.type,
+      parameters: cloneValue(node.parameters ?? {}),
+      credentials: node.credentials,
+      disabled: node.disabled,
+      retry: node.retry,
+      timeoutMs: node.timeoutMs,
+      metadata: nodeTypes.value.find((type) => type.type === node.type),
+      media: existing?.data.media,
+      mediaDeleted: existing?.data.mediaDeleted,
+      assistantPreview: state,
+    },
+  };
+}
+
+const assistantPreviewNodes = computed<EditorNode[]>(() => {
+  const proposed = pendingAiResult.value?.definition;
+  if (!proposed) return [];
+
+  const current = toDefinition();
+  const currentById = new Map(current.nodes.map((node) => [node.id, node]));
+  const proposedIds = new Set(proposed.nodes.map((node) => node.id));
+  const preview = proposed.nodes.map((node) => {
+    const previous = currentById.get(node.id);
+    const state: AssistantPreviewState = !previous
+      ? 'added'
+      : hasSamePreviewValue(previewNodeComparable(previous), previewNodeComparable(node))
+        ? 'unchanged'
+        : 'modified';
+    return toAssistantPreviewNode(node, state);
+  });
+
+  for (const node of current.nodes) {
+    if (!proposedIds.has(node.id)) preview.push(toAssistantPreviewNode(node, 'removed'));
+  }
+  return preview;
+});
+
+const assistantPreviewEdges = computed<EditorEdge[]>(() => {
+  const proposed = pendingAiResult.value?.definition;
+  if (!proposed) return [];
+
+  const current = toDefinition();
+  const currentById = new Map(current.edges.map((edge) => [edge.id, edge]));
+  const proposedIds = new Set(proposed.edges.map((edge) => edge.id));
+  const edgeStyle = (state: AssistantPreviewState): Styles => ({
+    stroke: state === 'added' ? '#3bf49c' : state === 'modified' ? '#f6c85f' : state === 'removed' ? '#ff6b7a' : '#71809a',
+    strokeWidth: state === 'unchanged' ? 1.5 : 2.5,
+    strokeDasharray: state === 'removed' ? '7 5' : undefined,
+    opacity: state === 'unchanged' ? 0.42 : 0.95,
+  });
+
+  const preview: EditorEdge[] = proposed.edges.map((edge) => {
+    const previous = currentById.get(edge.id);
+    const state: AssistantPreviewState = !previous
+      ? 'added'
+      : hasSamePreviewValue(previewEdgeComparable(previous), previewEdgeComparable(edge))
+        ? 'unchanged'
+        : 'modified';
+    return {
+      ...edge,
+      type: 'default',
+      animated: state === 'added' || state === 'modified',
+      style: edgeStyle(state),
+    };
+  });
+
+  for (const edge of current.edges) {
+    if (!proposedIds.has(edge.id)) {
+      preview.push({ ...edge, type: 'default', style: edgeStyle('removed') });
+    }
+  }
+  return preview;
+});
+
+const assistantPreviewSummary = computed(() => assistantPreviewNodes.value.reduce(
+  (summary, node) => {
+    const state = node.data.assistantPreview;
+    if (state && state !== 'unchanged') summary[state] += 1;
+    return summary;
+  },
+  { added: 0, modified: 0, removed: 0 },
+));
+
 function fromWorkflow(value: Workflow) {
   nodes.value = value.definition.nodes.map((node) => {
     const meta = nodeTypes.value.find((type) => type.type === node.type);
@@ -1188,6 +1331,56 @@ onBeforeUnmount(() => {
           <MiniMap pannable zoomable />
           <Controls />
         </VueFlow>
+
+        <div v-if="pendingAiResult" class="assistant-canvas-preview">
+          <div class="assistant-preview-toolbar">
+            <div class="assistant-preview-heading">
+              <span class="ai-sparkle">✦</span>
+              <div>
+                <strong>{{ isVi ? 'Bản xem trước của Gemini' : 'Gemini canvas preview' }}</strong>
+                <small>{{ isVi ? 'Workflow thật chỉ thay đổi sau khi bạn áp dụng' : 'The workflow changes only after you apply' }}</small>
+              </div>
+            </div>
+            <div class="assistant-preview-legend" aria-label="Preview change legend">
+              <span class="added">+{{ assistantPreviewSummary.added }} {{ isVi ? 'thêm' : 'added' }}</span>
+              <span class="modified">~{{ assistantPreviewSummary.modified }} {{ isVi ? 'sửa' : 'changed' }}</span>
+              <span class="removed">−{{ assistantPreviewSummary.removed }} {{ isVi ? 'xóa' : 'removed' }}</span>
+              <span v-if="pendingAiResult.warnings.length" class="warning" :title="pendingAiResult.warnings.join('\n')">
+                ⚠ {{ pendingAiResult.warnings.length }}
+              </span>
+            </div>
+            <div class="assistant-preview-actions">
+              <button type="button" @click="discardPendingAiResult">{{ isVi ? 'Hủy' : 'Discard' }}</button>
+              <button
+                type="button"
+                class="primary"
+                :disabled="!pendingAiResult.canApply"
+                @click="applyPendingAiResult"
+              >
+                {{ pendingAiResult.readyToRun
+                  ? (isVi ? 'Áp dụng' : 'Apply')
+                  : (isVi ? 'Áp dụng bản nháp' : 'Apply draft') }}
+              </button>
+            </div>
+          </div>
+
+          <VueFlow
+            :nodes="assistantPreviewNodes"
+            :edges="assistantPreviewEdges"
+            :node-types="nodeComponents"
+            :nodes-draggable="false"
+            :nodes-connectable="false"
+            :elements-selectable="false"
+            :zoom-on-double-click="false"
+            :fit-view-options="{ padding: 0.25 }"
+            fit-view-on-init
+            class="assistant-preview-flow"
+          >
+            <Background pattern-color="#263246" :gap="22" />
+            <Controls />
+          </VueFlow>
+        </div>
+
         <div v-if="executionId" class="execution-chip">
           {{ t('editor.execution') }}
           <RouterLink :to="`/executions/${executionId}`">
@@ -1197,17 +1390,18 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Floating Canvas AI Assistant Bar (Bottom-Center) -->
-        <div ref="modelMenuRef" class="canvas-ai-copilot-container">
+        <div
+          ref="modelMenuRef"
+          class="canvas-ai-copilot-container"
+          :class="{ collapsed: isAiChatCollapsed }"
+        >
           <!-- AI Explanation Bubble -->
           <transition name="fade">
-            <div v-if="aiExplanation" class="ai-explanation-bubble">
+            <div v-if="aiExplanation && !isAiChatCollapsed" class="ai-explanation-bubble">
               <span class="ai-sparkle">✦</span>
               <div class="bubble-text">
                 <strong>{{ pendingAiResult ? (isVi ? 'Xem trước thay đổi' : 'Review changes') : aiExplanation }}</strong>
                 <p v-if="pendingAiResult">{{ aiExplanation }}</p>
-                <ul v-if="pendingAiResult?.changes.length" class="ai-result-list changes">
-                  <li v-for="change in pendingAiResult.changes" :key="change">{{ change }}</li>
-                </ul>
                 <ul v-if="pendingAiResult?.warnings.length" class="ai-result-list warnings">
                   <li v-for="warning in pendingAiResult.warnings" :key="warning">⚠ {{ warning }}</li>
                 </ul>
@@ -1216,19 +1410,6 @@ onBeforeUnmount(() => {
                   <ol>
                     <li v-for="step in pendingAiResult.manualSteps" :key="step">{{ step }}</li>
                   </ol>
-                </div>
-                <div v-if="pendingAiResult" class="ai-review-actions">
-                  <button type="button" @click="discardPendingAiResult">{{ isVi ? 'Hủy' : 'Discard' }}</button>
-                  <button
-                    type="button"
-                    class="primary"
-                    :disabled="!pendingAiResult.canApply"
-                    @click="applyPendingAiResult"
-                  >
-                    {{ pendingAiResult.readyToRun
-                      ? (isVi ? 'Áp dụng' : 'Apply')
-                      : (isVi ? 'Áp dụng bản nháp' : 'Apply draft') }}
-                  </button>
                 </div>
               </div>
               <button class="bubble-close" :title="isVi ? 'Đóng' : 'Close'" @click="discardPendingAiResult">×</button>
@@ -1311,8 +1492,33 @@ onBeforeUnmount(() => {
             </div>
           </transition>
 
+          <button
+            type="button"
+            class="ai-chat-collapse-btn"
+            :class="{ collapsed: isAiChatCollapsed }"
+            :title="isAiChatCollapsed
+              ? (isVi ? 'Hiện thanh chat Gemini' : 'Show Gemini chat')
+              : (isVi ? 'Ẩn thanh chat Gemini' : 'Hide Gemini chat')"
+            :aria-label="isAiChatCollapsed
+              ? (isVi ? 'Hiện thanh chat Gemini' : 'Show Gemini chat')
+              : (isVi ? 'Ẩn thanh chat Gemini' : 'Hide Gemini chat')"
+            :aria-expanded="!isAiChatCollapsed"
+            aria-controls="gemini-chat-bar"
+            @click="toggleAiChatCollapsed"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+
           <!-- Floating Prompt Bar -->
-          <div class="canvas-ai-bar" :class="{ processing: isAiProcessing }">
+          <transition name="ai-bar-slide">
+          <div
+            v-show="!isAiChatCollapsed"
+            id="gemini-chat-bar"
+            class="canvas-ai-bar"
+            :class="{ processing: isAiProcessing }"
+          >
             <!-- Compact Gemini Icon Trigger Button -->
             <button
               type="button"
@@ -1356,6 +1562,7 @@ onBeforeUnmount(() => {
               <span v-else>➤</span>
             </button>
           </div>
+          </transition>
         </div>
       </div>
       <aside class="settings">

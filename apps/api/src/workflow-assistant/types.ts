@@ -62,6 +62,16 @@ export interface AssistantResponse {
   manualSteps: string[];
   canApply: boolean;
   readyToRun: boolean;
+  tokenUsage?: AssistantTokenUsage;
+}
+
+export interface AssistantTokenUsage {
+  requests: number;
+  inputTokens: number;
+  cachedTokens: number;
+  outputTokens: number;
+  thoughtTokens: number;
+  totalTokens: number;
 }
 
 const positionSchema = z.object({ x: z.number(), y: z.number() });

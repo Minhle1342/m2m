@@ -6,7 +6,8 @@ import {
   workflowAgentPlanSchema,
   workflowAgentResponseJsonSchema,
   type AssistantRequest,
-  type AssistantResponse
+  type AssistantResponse,
+  type AssistantTokenUsage
 } from './workflow-assistant/types.js';
 
 export type {
@@ -15,7 +16,8 @@ export type {
   AssistantNodeType,
   AssistantProviderStatus,
   AssistantRequest,
-  AssistantResponse
+  AssistantResponse,
+  AssistantTokenUsage
 } from './workflow-assistant/types.js';
 export { applyWorkflowAgentPlan } from './workflow-assistant/apply-plan.js';
 export { WORKFLOW_AGENT_SYSTEM_INSTRUCTION as SYSTEM_INSTRUCTION } from './workflow-assistant/prompt.js';
@@ -43,6 +45,46 @@ interface GeminiInteractionResponse {
   output_text?: string;
   steps?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
   outputs?: Array<{ type?: string; text?: string }>;
+  usage?: {
+    total_input_tokens?: number;
+    total_cached_tokens?: number;
+    total_output_tokens?: number;
+    total_thought_tokens?: number;
+    total_tokens?: number;
+  };
+}
+
+interface GeminiPlanResult {
+  plan: unknown;
+  tokenUsage?: AssistantTokenUsage;
+}
+
+function normalizeTokenUsage(usage: GeminiInteractionResponse['usage']): AssistantTokenUsage | undefined {
+  if (!usage) return undefined;
+  return {
+    requests: 1,
+    inputTokens: usage.total_input_tokens ?? 0,
+    cachedTokens: usage.total_cached_tokens ?? 0,
+    outputTokens: usage.total_output_tokens ?? 0,
+    thoughtTokens: usage.total_thought_tokens ?? 0,
+    totalTokens: usage.total_tokens ?? 0
+  };
+}
+
+function mergeTokenUsage(
+  current: AssistantTokenUsage | undefined,
+  next: AssistantTokenUsage | undefined
+): AssistantTokenUsage | undefined {
+  if (!current) return next;
+  if (!next) return current;
+  return {
+    requests: current.requests + next.requests,
+    inputTokens: current.inputTokens + next.inputTokens,
+    cachedTokens: current.cachedTokens + next.cachedTokens,
+    outputTokens: current.outputTokens + next.outputTokens,
+    thoughtTokens: current.thoughtTokens + next.thoughtTokens,
+    totalTokens: current.totalTokens + next.totalTokens
+  };
 }
 
 async function requestGeminiPlan(input: {
@@ -50,7 +92,7 @@ async function requestGeminiPlan(input: {
   modelId: string;
   maxTokens: number;
   prompt: string;
-}): Promise<unknown> {
+}): Promise<GeminiPlanResult> {
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${encodeURIComponent(input.apiKey)}`;
   let response: Response;
   try {
@@ -102,7 +144,10 @@ async function requestGeminiPlan(input: {
   }
 
   try {
-    return JSON.parse(candidateText.replace(/^```json\s*/i, '').replace(/\s*```$/i, ''));
+    return {
+      plan: JSON.parse(candidateText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '')),
+      tokenUsage: normalizeTokenUsage(resultData.usage)
+    };
   } catch (error) {
     throw new M2MError(
       'AI_STRUCTURED_OUTPUT_ERROR',
@@ -128,19 +173,23 @@ export async function processWorkflowAssistant(req: AssistantRequest): Promise<A
   const modelId = req.model || 'gemini-3.6-flash';
   const maxTokens = Math.max(1024, Math.min(65536, Number(req.maxTokens) || 8192));
   const originalPrompt = buildWorkflowAgentPrompt(req);
-  let rawPlan = await requestGeminiPlan({ apiKey, modelId, maxTokens, prompt: originalPrompt });
+  const initialResult = await requestGeminiPlan({ apiKey, modelId, maxTokens, prompt: originalPrompt });
+  let rawPlan = initialResult.plan;
+  let tokenUsage = initialResult.tokenUsage;
   let parsedPlan = workflowAgentPlanSchema.safeParse(normalizeWorkflowAgentPlan(rawPlan));
   if (!parsedPlan.success) {
     const firstIssues = parsedPlan.error.issues
       .slice(0, 8)
       .map((issue) => `${issue.path.join('.') || 'plan'}: ${issue.message}`);
     const previousPlan = JSON.stringify(rawPlan).slice(0, 12_000);
-    rawPlan = await requestGeminiPlan({
+    const repairResult = await requestGeminiPlan({
       apiKey,
       modelId,
       maxTokens,
       prompt: `${originalPrompt}\n\n=== SCHEMA REPAIR REQUIRED ===\nThe previous JSON plan was rejected for these reasons:\n- ${firstIssues.join('\n- ')}\n\nPrevious JSON:\n${previousPlan}\n\nReturn a corrected plan. Keep the same user intent and make no additional changes.`
     });
+    rawPlan = repairResult.plan;
+    tokenUsage = mergeTokenUsage(tokenUsage, repairResult.tokenUsage);
     parsedPlan = workflowAgentPlanSchema.safeParse(normalizeWorkflowAgentPlan(rawPlan));
     if (!parsedPlan.success) {
       const finalIssues = parsedPlan.error.issues
@@ -175,6 +224,7 @@ export async function processWorkflowAssistant(req: AssistantRequest): Promise<A
     warnings: applied.warnings,
     manualSteps: applied.manualSteps,
     canApply: applied.canApply,
-    readyToRun: applied.readyToRun
+    readyToRun: applied.readyToRun,
+    tokenUsage
   };
 }

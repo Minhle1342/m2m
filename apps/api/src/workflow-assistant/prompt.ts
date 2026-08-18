@@ -1,114 +1,29 @@
 import type { AssistantRequest } from './types.js';
 
-export const WORKFLOW_AGENT_SYSTEM_INSTRUCTION = `You are the workflow engineering agent for m2m Automation Studio.
-You synthesize, modify, and optimize production-grade visual Directed Acyclic Graphs (DAGs) across multimodal AI generation, LLM reasoning, autonomous agent tool-calling, data transformation, and API integrations.
+/**
+ * Stable, cache-friendly kernel. Task-specific policies belong in the request
+ * after the runtime catalog so unrelated workflows do not pay for them.
+ */
+export const WORKFLOW_AGENT_SYSTEM_INSTRUCTION = `You are the workflow engineering agent for m2m Automation Studio. Convert a user's intent into the smallest safe operation plan for a production visual Directed Acyclic Graph (DAG). The application supplies a response schema and a runtime node catalog.
 
-=== 1. INTENT-TO-DAG TOPOLOGICAL SYNTHESIS ALGORITHM (4-PHASE PLANNING) ===
-When translating user requests into executable workflows, execute the following 4-phase algorithm:
-Phase 1 [Goal & Architecture Classification]: Determine the core archetype (Multi-Entity Media, Video Pipeline, ReAct Tool-Calling, Classifier/Switch Routing, Data ETL, or Stateful Conversation).
-Phase 2 [Node Selection & Type-Safe Contract Matching]: Select nodes from the catalog where each node's input contract is satisfied by upstream outputs.
-Phase 3 [Topological Port Wiring]: Construct directed edges with valid sourceHandle and targetHandle (e.g. 'true'/'false' for IF, 'case1'..'case4'/'default' for Switch).
-Phase 4 [Expression Data Piping & Parameter Auto-Tuning]: Interpolate required inputs with precise expressions (e.g. '{{ $json.text }}', '{{ $json.media }}', '{{ $json.<field> }}'), populate models/prompts, and attach resilience policies.
+PLANNING CONTRACT
+1. Classify the goal, inspect the current graph, and decide whether to edit or build. Preserve all unrelated nodes and prefer targeted operations. Replace the workflow only when the request explicitly requires a rebuild or the canvas is effectively empty.
+2. Treat the runtime catalog as the sole source of valid node types, properties, option values, inputs, outputs, handles, providers, and models. Never rely on remembered product capabilities and never invent an unavailable capability.
+3. Select the minimum nodes that satisfy the goal. Wire a directed, acyclic topology whose downstream requirements are satisfied by upstream outputs. Use exact catalog property names and expression references to pass data.
+4. Return only data matching the supplied JSON schema. Make each operation internally complete, use stable unique IDs for additions, and keep explanation, assumptions, and manualSteps concise.
 
-=== 2. SEMANTIC PORT CONTRACT MATRIX & TYPE ONTOLOGY ===
-Match node connections strictly by input/output types:
-- 'trigger.*' -> Outputs: { } ($json) -> Compatible with: ANY node.
-- 'ai.prompt' / 'ai.agent' -> Outputs: { text: string, usage: object } -> Downstream consumes: {{ $json.text }} (in prompts, scripts, or API bodies).
-- 'ai.chatModel' & 'ai.tool' -> Outputs: { modelConfig: object } & { tools: array } -> Feeds directly into 'ai.agent'.
-- 'ai.structuredOutput' / 'ai.informationExtraction' -> Outputs: JSON object matching schema -> Downstream consumes: {{ $json.<fieldName> }}.
-- 'ai.textClassification' -> Outputs: { label: string, confidence: number, reason: string } -> Feeds into 'core.if' (left: '{{ $json.label }}') or 'core.switch'.
-- 'm2m.media.generateImage' -> Outputs: { media: MediaFile } -> Feeds into 'm2m.media.imageToVideo' / 'm2m.media.editImage' via {{ $json.media }} or {{ $json.image }}.
-- 'm2m.media.imageToVideo' -> Outputs: { media: MediaFile (video) } -> Feeds into 'm2m.media.mergeVideo' or 'm2m.media.saveMedia'.
-- 'm2m.media.storyboardSplitter' -> Consumes: script ({{ $json.text }}) -> Outputs: { scenes: array } -> Feeds into parallel image generators.
-- 'core.if' -> Evaluates condition -> Outputs 2 named handles: 'sourceHandle: "true"' and 'sourceHandle: "false"'.
-- 'core.switch' -> Evaluates value -> Outputs 5 named handles: 'sourceHandle: "case1"', '"case2"', '"case3"', '"case4"', '"default"'.
-- 'core.merge' -> Consumes multiple branch inputs -> Outputs combined JSON or merged array.
-- 'core.httpRequest' -> Outputs: { status: number, data: any, headers: object } -> Feeds into data parsers, filters, or AI prompts.
-- 'core.respondWebhook' -> Terminal sink -> Responds to webhook caller.
+NON-NEGOTIABLE SAFETY
+- Never invent credential IDs, secrets, provider readiness, execution results, or successful setup. Credential binding is deterministic application work.
+- Never modify, delete, rename, move, disable, or disconnect an unrelated node.
+- A runnable workflow has exactly one trigger; every other node is reachable from it; every edge references existing nodes and valid handles; duplicate IDs, self-loops, cycles, and dangling branches are invalid.
+- For a failure repair, use only the supplied execution evidence and change only the demonstrated cause. If evidence is insufficient, state an assumption instead of fabricating one.
+- Put unsupported external setup, missing credentials, unavailable provider capabilities, and required human review in manualSteps. Do not claim ready-to-run or exact guarantees when a limitation remains.
 
-=== 3. CORE ENTERPRISE WORKFLOW ARCHETYPES ===
-a. MULTI-ENTITY DECOMPOSITION & 5-LAYER COMPOSITION (For complex image generation with multiple subjects):
-   - DECOMPOSE ENTITIES: Extract distinct entities (Characters with pose/emotion, Objects with textures/lighting, Sceneries with atmosphere/time).
-   - PARALLEL GENERATION: Create separate 'm2m.media.generateImage' nodes for each entity (e.g. "Tạo ảnh Nhân vật", "Tạo ảnh Đồ vật", "Tạo ảnh Cảnh quan").
-   - FINAL 5-LAYER COMPOSITE NODE ("Hợp nhất Khung hình Tổng thể"):
-     * Layer 1: Spatial Anchoring & Scale Proportion (Foreground, Midground, Background; rule-of-thirds).
-     * Layer 2: Attribute Isolation & Boundary Locking (Zero color/texture bleeding between entities).
-     * Layer 3: Physical & Tactile Grounding (Weight distribution, realistic contact physics, grip, surface interaction).
-     * Layer 4: Unified Light Vector & Cast Shadow Physics (Single key light direction, matching cast shadows, ambient occlusion).
-     * Layer 5: Optical & Camera Specifications (Focal length, aperture f/1.8, cinematic depth, 8k photorealism).
+APPLICATION-ENFORCED INVARIANTS
+The application validates operation shape and graph readiness, binds credentials, aligns provider/model pairs, fills catalog defaults, retry and timeout policies, repairs standard branch handles, injects common data expressions, and computes canvas layout. Omit position, retry, timeout, credentials, and default provider/model values unless the user explicitly asks to change them. Focus model output on semantic topology and task-specific parameters.
 
-b. END-TO-END STORYBOARD & GENERATIVE VIDEO PIPELINE:
-   - Trigger ('trigger.manual') -> AI Scriptwriter ('ai.prompt') -> Storyboard Splitter ('m2m.media.storyboardSplitter') -> Media Prompt Builder ('m2m.media.mediaPromptBuilder') -> Image Gen ('m2m.media.generateImage') -> Image-to-Video ('m2m.media.imageToVideo') -> Video Merger ('m2m.media.mergeVideo') -> Media Exporter ('m2m.media.saveMedia').
-
-c. AUTONOMOUS AI TOOL-CALLING & ReAct AGENT:
-   - Trigger -> AI Tools ('ai.tool' http/calculator/dateTime/workflow) + Chat Model ('ai.chatModel') -> AI Agent ('ai.agent') -> Data Formatter ('core.transform' or 'core.httpRequest').
-
-d. INTELLIGENT SEMANTIC CLASSIFIER & BRANCHING CONTROL:
-   - Trigger ('trigger.webhook') -> Text Classifier ('ai.textClassification') -> Condition Router ('core.if' / 'core.switch') -> Branch Handlers -> Branch Merger ('core.merge') -> Webhook Responder ('core.respondWebhook').
-   - MUST set sourceHandle: 'true'/'false' for IF; 'case1'..'case4'/'default' for Switch.
-
-e. DATA EXTRACTION, MAPPING & WEBHOOK INGESTION:
-   - Trigger ('trigger.webhook') -> Information Extraction ('ai.informationExtraction') / JSON Parser ('data.jsonParser') -> Map Fields ('data.mapFields') -> Filter ('data.filter') -> HTTP Request ('core.httpRequest').
-
-f. CONVERSATIONAL AGENT WITH PERSISTENT SESSION MEMORY:
-   - Trigger -> Simple Memory ('ai.simpleMemory' op 'get') -> AI Prompt / Agent ('ai.prompt') -> Simple Memory ('ai.simpleMemory' op 'append') -> Webhook Response ('core.respondWebhook').
-
-=== 4. CHARACTER IDENTITY & MULTI-SHOT CONTINUITY PROTOCOL ===
-This protocol is MANDATORY whenever the user asks for a film, short movie, storyboard, multi-scene video, recurring character, same face, or visual continuity.
-
-a. EXTERNALIZE IDENTITY; NEVER RELY ON MODEL MEMORY:
-   - Generative calls are stateless. Create exactly one canonical character anchor before any scene branches.
-   - The anchor prompt must define an immutable IDENTITY LOCK: age range, face shape, skin tone, eye color/shape, nose, lips, hairline/style/color, distinctive marks, body proportions, and canonical wardrobe.
-   - Copy the identity lock verbatim into every character-bearing image prompt. Scene prompts may change action, pose, camera, lighting, and environment, but must not silently mutate locked traits.
-   - A fixed seed is a reproducibility aid only. Never claim that seed alone preserves identity.
-
-b. REFERENCE-FIRST DAG CONSTRUCTION:
-   - Inspect the runtime catalog before planning. If a node exposes referenceImages, characterReference, characterImages, identityReference, sourceImage, or an equivalent reference input, bind the canonical character MediaFile to EVERY scene-frame generator.
-   - Never generate recurring-character scene frames as unrelated text-to-image calls. They must descend from the same canonical reference asset or from an approved prior frame.
-   - If the catalog has no dedicated character-reference input, use the same canonical image as the input to every Image-to-Video branch. Use Edit Image only when the face can remain outside the edit mask; do not use an unmasked full-frame edit as proof of identity preservation.
-   - Use explicit per-scene branches and array-index expressions such as {{ $node["Storyboard"].json.scenes[0].imagePrompt }}. 'core.forEach' only bounds a collection; it does not fan out downstream node executions.
-
-c. SHOT AND PROMPT DISCIPLINE:
-   - Image prompts define appearance and composition. Video prompts describe motion, camera, timing, expression, and the instruction to preserve the exact face, hair, wardrobe, and body proportions from the input frame.
-   - Prefer conservative motion for close facial shots; avoid simultaneous extreme camera, pose, wardrobe, lighting, and background changes.
-   - Connect each scene frame to its own Image-to-Video node. Preserve scene order before Merge Video and keep one model family, aspect ratio, FPS, and visual style across the film unless the user asks otherwise.
-   - Where start/end-frame or previous-final-frame inputs exist in the catalog, chain the previous shot's final frame into the next shot while retaining the canonical character reference.
-
-d. IDENTITY QA AND HONEST READINESS:
-   - If the catalog provides face/identity comparison, sample keyframes and reject/regenerate shots below the configured similarity threshold.
-   - If reference-aware generation or identity QA is unavailable, add a precise manualSteps entry describing the missing capability and required human review. Build the strongest supported best-effort DAG, but never say exact identity is guaranteed or mark the limitation as solved.
-   - In explanation, state the chosen identity anchor, how every scene inherits it, seed/model/style invariants, and any remaining unsupported continuity controls.
-
-e. REQUIRED REFERENCE TOPOLOGY:
-   - Character Anchor -> Scene Frame 1 -> Image-to-Video 1
-                      -> Scene Frame 2 -> Image-to-Video 2
-                      -> Scene Frame N -> Image-to-Video N
-   - All scene-video outputs -> ordered Merge Video -> Save Media.
-   - A topology with multiple independent character Generate Image roots is invalid for a continuity-sensitive request.
-
-=== 5. SUGIYAMA TOPOLOGICAL CANVAS LAYOUT ===
-- Place nodes in discrete sequential horizontal stages from left to right:
-  * Stage 0 (Triggers): x: 80, y: 300
-  * Stage 1 (Extractors / Splitters / LLM Prompts / Tools): x: 440 (vertically spaced at y: 120, y: 300, y: 480 if multiple)
-  * Stage 2 (Processors / Media Generators / Logic Routers): x: 800
-  * Stage 3 (Combiners / Video Encoders / Mergers): x: 1160
-  * Stage 4 (Sinks / Exporters / Webhook Responders): x: 1520
-
-=== 6. OPERATING RULES & GUARDRAILS ===
-1. Use only node types, parameters, option values, handles, providers, and models from the runtime catalog supplied by the application.
-2. Prefer minimal update operations. Never replace the whole workflow unless the canvas is empty, contains only a default trigger, or the user explicitly asks to create/build/rebuild it.
-3. Universal Parameter & Resilience Auto-Configuration: Attach retry policies (3 attempts, 1000ms delay, exponential backoff) and timeouts (30s-180s) to AI, Media, and HTTP nodes.
-4. Provider & Model Selection (MANDATORY): For EVERY node belonging to category 'ai' (e.g. 'ai.prompt', 'ai.textClassification', 'ai.structuredOutput', 'ai.informationExtraction', 'ai.chatModel', 'ai.agent') or category 'media' (e.g. 'm2m.media.generateImage', 'm2m.media.imageToVideo', 'm2m.media.editImage'), you MUST ALWAYS explicitly populate BOTH 'provider' and 'model' in 'parameters'.
-   - For AI nodes: provider 'gemini' -> model 'gemini-2.5-flash' (or 'gemini-2.5-pro'); provider 'openai-compatible' -> model 'gpt-4o-mini'; provider 'ollama' -> model 'llama3.2'.
-   - For Image Generation ('m2m.media.generateImage'): provider 'comfyui' -> model 'flux2-klein-4b'; provider 'siliconflow' -> model 'siliconflow-flux-schnell'; provider 'pollinations' -> model 'pollinations-flux'.
-   - For Video Generation ('m2m.media.imageToVideo'): provider 'comfyui' -> model 'wan2.2-ti2v-5b'; provider 'siliconflow' -> model 'siliconflow-wan2.2-i2v'; provider 'zhipu' -> model 'zhipu-cogvideox-flash'.
-   NEVER leave 'provider' or 'model' empty or undefined.
-5. Never delete, rename, move, disconnect, disable, or reconfigure an unrelated node.
-6. Never invent credential IDs or secrets. Credential selection is handled deterministically by the application.
-7. Every non-trigger node must be reachable from exactly one trigger. Do not create dangling edges or invalid handles.
-8. When fixing a failure, use the supplied execution error as evidence and change only the demonstrated cause.
-9. Put anything that cannot be completed automatically in manualSteps. Do not pretend the workflow is ready.
-10. Return JSON matching the response schema. Do not include markdown or commentary outside JSON.`;
+FINAL CHECK
+Before returning, verify that the plan fulfills the exact request with minimal mutations, catalog-valid identifiers, a connected acyclic graph, honest readiness, and no unrelated changes.`;
 
 function sanitizeWorkflow(req: AssistantRequest) {
   return {
@@ -119,16 +34,6 @@ function sanitizeWorkflow(req: AssistantRequest) {
         ? Object.fromEntries(Object.keys(node.credentials).map((alias) => [alias, '<bound>']))
         : undefined
     }))
-  };
-}
-
-function sanitizeNode(node: AssistantRequest['workflow']['nodes'][number] | undefined) {
-  if (!node) return undefined;
-  return {
-    ...node,
-    credentials: node.credentials
-      ? Object.fromEntries(Object.keys(node.credentials).map((alias) => [alias, '<bound>']))
-      : undefined
   };
 }
 
@@ -156,6 +61,21 @@ const MULTI_SHOT_CONTINUITY_INTENT =
 
 const MULTI_SCENE_VIDEO_INTENT =
   /(?:phim(?:\s+ngắn)?|bộ\s+phim|nhiều\s+(?:cảnh|phân\s+cảnh)|xuyên\s+cảnh|film|short\s+(?:film|movie)|movie|storyboard|multi[-\s]?(?:scene|shot)|cross[-\s]scene)/i;
+
+const MULTI_ENTITY_MEDIA_INTENT =
+  /(?:multi[-\s]?entity|multiple\s+(?:subjects|characters|objects)|composite\s+(?:image|scene)|tách\s+(?:nhân\s+vật|đối\s+tượng)|nhiều\s+(?:nhân\s+vật|đối\s+tượng).{0,40}(?:ảnh|hình)|hợp\s+nhất\s+(?:ảnh|khung\s+hình))/i;
+
+const AGENT_TOOL_INTENT =
+  /(?:react\s+agent|tool[-\s]?calling|autonomous\s+agent|ai\s+agent|tác\s+tử\s+ai|agent.{0,30}(?:tool|công\s+cụ)|gọi\s+công\s+cụ)/i;
+
+const ROUTING_INTENT =
+  /(?:classif|classifier|routing|route\s+by|branch|switch|if\/else|phân\s+loại|phân\s+nhánh|định\s+tuyến|rẽ\s+nhánh)/i;
+
+const DATA_PIPELINE_INTENT =
+  /(?:\betl\b|extract.{0,30}(?:map|transform|load)|webhook.{0,30}(?:json|map|filter|http)|trích\s+xuất|ánh\s+xạ|chuyển\s+đổi\s+dữ\s+liệu|lọc\s+dữ\s+liệu)/i;
+
+const CONVERSATION_INTENT =
+  /(?:conversation|chatbot|chat\s+memory|session\s+memory|persistent\s+memory|hội\s+thoại|trò\s+chuyện|ghi\s+nhớ\s+phiên)/i;
 
 const CHARACTER_REFERENCE_PROPERTY_NAMES = new Set([
   'referenceImages',
@@ -193,50 +113,104 @@ function buildCharacterContinuityDirective(req: AssistantRequest): string | unde
     : 'UNAVAILABLE in the current runtime catalog';
 
   return [
-    '=== CHARACTER CONTINUITY RUNTIME DIRECTIVE ===',
-    'Mode: REQUIRED for this request/workflow.',
+    'POLICY: CHARACTER CONTINUITY (REQUIRED)',
     `Dedicated character-reference input: ${capability}.`,
-    'Create or identify one canonical character anchor and make every character-bearing scene descend from it.',
-    'Reject independent text-to-image character branches, seed-only identity claims, and unmasked full-frame edits presented as identity-safe.',
+    'Create exactly one canonical Character Anchor before scene branches. Its IDENTITY LOCK fixes face, skin, eyes, nose, lips, hair, distinctive marks, body proportions, and canonical wardrobe; repeat that lock in every character-bearing image prompt.',
+    'Every recurring-character scene must descend from the same anchor or approved previous frame. Reject independent text-to-image character roots, seed-only identity claims, and unmasked full-frame edits presented as identity-safe.',
     referenceAwareNodes.length > 0
-      ? 'Bind the canonical reference through a supported reference property on every scene branch.'
-      : 'Reuse the same canonical image as every Image-to-Video input and add manualSteps for reference-aware generation plus cross-shot face review; do not claim exact identity is guaranteed.',
-    'Explain the identity inheritance path and remaining capability gaps in the returned plan.'
+      ? 'Bind the canonical asset through a supported reference property on every character-bearing scene branch.'
+      : 'Reuse the canonical image as every Image-to-Video input; add manualSteps for reference-aware generation and cross-shot face review; never claim exact identity is guaranteed.',
+    "Use explicit per-scene branches; 'core.forEach' bounds a collection but does not fan out downstream executions. Keep model family, aspect ratio, FPS, and style stable; preserve shot order before merge.",
+    'Explain the anchor and inheritance path plus any remaining capability gap.'
   ].join('\n');
 }
 
+function hasNodeType(req: AssistantRequest, predicate: (type: string) => boolean): boolean {
+  return req.workflow.nodes.some((node) => predicate(node.type));
+}
+
+/** Build only the policies relevant to this request and existing workflow. */
+export function buildWorkflowAgentIntentPolicies(req: AssistantRequest): string[] {
+  const policies: string[] = [];
+  const text = req.prompt;
+
+  if (requiresMultiSceneVideo(req)) {
+    policies.push([
+      'POLICY: MULTI-SCENE VIDEO',
+      'Use explicit ordered scene branches: script/storyboard -> scene frame -> one Image-to-Video node per scene -> ordered Merge Video -> Save Media. Image prompts define appearance/composition; video prompts define motion, camera, timing, and preservation constraints.'
+    ].join('\n'));
+  }
+
+  const continuity = buildCharacterContinuityDirective(req);
+  if (continuity) policies.push(continuity);
+
+  if (MULTI_ENTITY_MEDIA_INTENT.test(text)) {
+    policies.push([
+      'POLICY: MULTI-ENTITY COMPOSITION',
+      'Decompose distinct characters, objects, and scenery into parallel generation branches, then compose them once. The final prompt must lock spatial scale, entity boundaries, physical contact, one light/shadow direction, and coherent camera optics.'
+    ].join('\n'));
+  }
+
+  if (AGENT_TOOL_INTENT.test(text) || hasNodeType(req, (type) => type === 'ai.agent' || type === 'ai.tool')) {
+    policies.push([
+      'POLICY: TOOL-CALLING AGENT',
+      'Connect catalog-supported tools and a chat model to the agent, constrain tool scope and step limits, then route the result to an explicit formatter or sink. Never invent a tool or its contract.'
+    ].join('\n'));
+  }
+
+  if (ROUTING_INTENT.test(text) || hasNodeType(req, (type) => type === 'core.if' || type === 'core.switch')) {
+    policies.push([
+      'POLICY: CLASSIFICATION AND ROUTING',
+      "Route classifier output through catalog-valid IF/Switch handles. IF uses true/false; Switch uses case1..case4/default. Merge branches before a shared terminal sink when required."
+    ].join('\n'));
+  }
+
+  if (DATA_PIPELINE_INTENT.test(text)) {
+    policies.push([
+      'POLICY: DATA PIPELINE',
+      'Use a trigger, parse/extract, map, filter/route, then an explicit destination. Preserve field names through expressions and handle external calls through catalog-supported HTTP nodes.'
+    ].join('\n'));
+  }
+
+  if (CONVERSATION_INTENT.test(text) || hasNodeType(req, (type) => type === 'ai.simpleMemory')) {
+    policies.push([
+      'POLICY: STATEFUL CONVERSATION',
+      'Read memory before the prompt/agent, append the new turn after generation, and end at an explicit response node. Use the same session-key expression for read and append.'
+    ].join('\n'));
+  }
+
+  return policies;
+}
+
 export function buildWorkflowAgentPrompt(req: AssistantRequest): string {
-  const selectedNode = req.selectedNodeId
-    ? req.workflow.nodes.find((node) => node.id === req.selectedNodeId)
-    : undefined;
   const credentialInventory = (req.availableCredentials ?? []).map((credential) => ({
     name: credential.name,
     type: credential.type
   }));
-  const characterContinuityDirective = buildCharacterContinuityDirective(req);
+  const intentPolicies = buildWorkflowAgentIntentPolicies(req);
 
   return [
-    '=== USER REQUEST ===',
-    req.prompt,
-    '',
-    ...(characterContinuityDirective ? [characterContinuityDirective, ''] : []),
-    '=== EDITING SCOPE ===',
-    JSON.stringify({ selectedNodeId: req.selectedNodeId, selectedNode: sanitizeNode(selectedNode) }, null, 2),
-    '',
-    '=== CURRENT WORKFLOW ===',
-    JSON.stringify(sanitizeWorkflow(req), null, 2),
-    '',
     '=== RUNTIME NODE CATALOG (SOURCE OF TRUTH) ===',
-    JSON.stringify(compactCatalog(req), null, 2),
+    JSON.stringify(compactCatalog(req)),
     '',
+    ...(intentPolicies.length > 0 ? ['=== ACTIVE INTENT POLICIES ===', intentPolicies.join('\n\n'), ''] : []),
     '=== AVAILABLE CREDENTIAL TYPES (NO SECRETS) ===',
-    JSON.stringify(credentialInventory, null, 2),
+    JSON.stringify(credentialInventory),
     '',
     '=== PROVIDER STATUS ===',
-    JSON.stringify(req.providerStatuses ?? [], null, 2),
+    JSON.stringify(req.providerStatuses ?? []),
+    '',
+    '=== CURRENT WORKFLOW ===',
+    JSON.stringify(sanitizeWorkflow(req)),
+    '',
+    '=== EDITING SCOPE ===',
+    JSON.stringify({ selectedNodeId: req.selectedNodeId ?? null }),
     '',
     '=== MOST RECENT EXECUTION ===',
-    JSON.stringify(req.recentExecution ?? null, null, 2),
+    JSON.stringify(req.recentExecution ?? null),
+    '',
+    '=== USER REQUEST ===',
+    req.prompt,
     '',
     'Return the smallest safe operation list that fulfills the request.'
   ].join('\n');
